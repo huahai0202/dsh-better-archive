@@ -1,0 +1,8 @@
+# dsh-ui-archived-panel bundle patch
+#
+# Mounts the host half (the /archived HTTP routes) into the web profile.
+# The browser half is discovered automatically through the `dsh.client`
+# declaration in package.json.
+- insert:
+    - id: ui-archived-panel
+      name: 'dsh-ui-archived-panel'

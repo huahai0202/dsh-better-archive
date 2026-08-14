@@ -1,0 +1,13 @@
+# dependencies
+node_modules/
+
+# build artifacts
+*.tgz
+
+# logs
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,62 @@
+{
+  "name": "dsh-ui-archived-panel",
+  "description": "Sidebar Archived entry + archived-session panel with unarchive and delete, for the DeepSeek Harness web GUI",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "ui",
+    "archive",
+    "unarchive",
+    "session"
+  ],
+  "license": "MIT",
+  "author": "huahai0202",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/huahai0202/dsh-ui-archived-panel.git"
+  },
+  "homepage": "https://github.com/huahai0202/dsh-ui-archived-panel#readme",
+  "bugs": {
+    "url": "https://github.com/huahai0202/dsh-ui-archived-panel/issues"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
+    "@deepseek-ai/cordis": "^4.0.1"
+  }
+}
