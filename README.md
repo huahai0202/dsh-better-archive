@@ -4,6 +4,12 @@ DSH 网页 GUI 的「已归档会话」面板插件：在侧边栏设置区新�
 
 > A DeepSeek Harness (DSH) web-GUI plugin that adds an "Archived" panel to the sidebar settings area — list archived sessions, **unarchive** them, or **permanently delete** them (per project / all).
 
+## 截图 / Screenshots
+
+| 深色 / Dark | 浅色 / Light |
+| --- | --- |
+| <img src="./assets/screenshot-dark.png" alt="Dark theme" width="360"/> | <img src="./assets/screenshot-light.png" alt="Light theme" width="360"/> |
+
 ## 特性 / Features
 
 - 侧边栏设置区新增「已归档」入口（挂载到 `settings.section` slot）。
