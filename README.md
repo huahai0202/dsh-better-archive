@@ -1,4 +1,4 @@
-# dsh-ui-archived-panel
+# dsh-better-archive
 
 DSH 网页 GUI 的「已归档会话」面板插件：在侧边栏设置区新增「已归档」入口，列出所有已归档会话，支持**取消归档**、单个/批量**永久删除**（按项目删除 / 全部删除）。
 
@@ -17,13 +17,13 @@ DSH 网页 GUI 的「已归档会话」面板插件：在侧边栏设置区新�
 
 ```sh
 # 从 GitHub 直接安装（无需 npm 发布）
-dsh plugin --profile web add github:huahai0202/dsh-ui-archived-panel
+dsh plugin --profile web add github:huahai0202/dsh-better-archive
 ```
 
 安装后重启 `dsh web`。安装会自动把本包加入 profile 的 `dsh.profile.bundles`：
 
 ```json
-"bundles": [ "...", "dsh-ui-archived-panel" ]
+"bundles": [ "...", "dsh-better-archive" ]
 ```
 
 若未自动加入，手动追加该数组项，然后重启 `dsh web`。
@@ -37,7 +37,7 @@ dsh plugin --profile web add <path-to-this-checkout>
 ## 结构 / Structure
 
 ```
-ui-archived-panel/
+dsh-better-archive/
   package.json         # 包清单 + dsh.bundle.patch / dsh.client 声明
   cordis.patch.yml     # host 半挂载行（profile bundle 机制自动应用）
   lib/
