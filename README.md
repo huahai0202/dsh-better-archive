@@ -1,80 +1,74 @@
-# dsh-better-archive
+# DSH Better Archive
 
-DSH 网页 GUI 的「已归档会话」面板插件：在侧边栏设置区新增「已归档」入口，列出所有已归档会话，支持**取消归档**、单个/批量**永久删除**（按项目删除 / 全部删除）。
+> 为 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) Web GUI 提供完整、可管理的已归档会话视图。
 
-> A DeepSeek Harness (DSH) web-GUI plugin that adds an "Archived" panel to the sidebar settings area — list archived sessions, **unarchive** them, or **permanently delete** them (per project / all).
+`dsh-better-archive` 会在 DSH 侧边栏的设置区域新增「已归档」入口。你可以查找和筛选归档会话、恢复会话，或按需永久删除不再需要的归档记录。
 
-## 截图 / Screenshots
+## 界面
 
-| 深色 / Dark | 浅色 / Light |
-| --- | --- |
-| <img src="./assets/screenshot-dark.png" alt="Dark theme" width="360"/> | <img src="./assets/screenshot-light.png" alt="Light theme" width="360"/> |
+| 深色模式 | 浅色模式 |
+| :---: | :---: |
+| <img src="./assets/screenshot-dark.png" alt="深色模式下的已归档会话页面" width="420" /> | <img src="./assets/screenshot-light.png" alt="浅色模式下的已归档会话页面" width="420" /> |
 
-## 特性 / Features
+## 功能
 
-- 侧边栏设置区新增「已归档」入口（挂载到 `settings.section` slot）。
-- **跟随 DSH 语言设置**：侧边栏入口与面板文案均接入 DSH 的 i18n 系统（`dsh-client-locale`），中文模式下显示中文、英文模式下显示英文，切换语言实时生效、无需刷新。
-- 按项目分组列出已归档会话，支持搜索、按更新时间/字母排序、按项目筛选。
-- **取消归档**：补齐 DSH `WorkspaceRegistry` 缺失的 unarchive 能力。它与 `archiveSession` 走完全相同的持久化路径；取消归档后 api-proxy 自动推送 `host/archived-sessions-changed`，浏览器会话列表即时刷新。
-- **永久删除**：单个删除、按项目删除、全部删除（带确认弹窗，删除会话日志与工作区/归档记账）。
+- 在 DSH 设置区提供独立的「已归档」页面。
+- 按项目查看归档会话；支持关键词搜索、项目筛选，以及按更新时间或名称排序。
+- 一键取消归档。恢复后会话会立即回到 DSH 的正常会话列表。
+- 支持删除单个会话、某个项目下的全部归档会话，或清空全部归档会话。
+- 页面文案跟随 DSH 的语言设置，中英文切换无需刷新页面。
 
-## 安装 / Install
+## 安装
 
-> 需要 Node.js 22.19+ 与 pnpm（`dsh plugin` 底层通过 pnpm 安装）。
+需要 Node.js 22.19+ 和 pnpm。
 
 ```sh
-# 从 GitHub 直接安装（无需 npm 发布）
 dsh plugin --profile web add github:huahai0202/dsh-better-archive
 ```
 
-安装后重启 `dsh web`。安装会自动把本包加入 profile 的 `dsh.profile.bundles`：
+安装完成后重启 `dsh web`。插件会自动加入该 profile 的 `dsh.profile.bundles`；若未自动加入，请在该数组中添加 `"dsh-better-archive"`，然后重启 DSH Web。
 
-```json
-"bundles": [ "...", "dsh-better-archive" ]
-```
-
-若未自动加入，手动追加该数组项，然后重启 `dsh web`。
-
-本地开发时可用路径安装：
+## 本地开发
 
 ```sh
 dsh plugin --profile web add <path-to-this-checkout>
 ```
 
-## 结构 / Structure
+本地修改后重启 `dsh web`，以加载最新的插件代码。
 
-```
-dsh-better-archive/
-  package.json         # 包清单 + dsh.bundle.patch / dsh.client 声明
-  cordis.patch.yml     # host 半挂载行（profile bundle 机制自动应用）
-  lib/
-    index.js           # Host 半：/archived/* HTTP 路由
-    client.js          # 浏览器半：侧边栏入口 + 归档面板（React，零构建）
-  LICENSE
-  README.md
-```
-
-## Host 路由 / Routes
-
-| 路由 | 方法 | 说明 |
-| --- | --- | --- |
-| `/archived/unarchive` | POST | body `{ sessionId }`，取消归档 |
-| `/archived/delete` | POST | body `{ sessionId }`，永久删除单个会话 |
-| `/archived/delete-project` | POST | body `{ cwd }`，删除某项目全部归档会话 |
-| `/archived/delete-all` | POST | body `{ confirm: true }`，删除全部归档会话 |
-
-删除实现以 DSH `0.1.0-rc.6` 默认的 JSONL 会话后端为目标：会话日志位于独立的会话目录中，删除会移除该目录及其工作区记账；DSH 的内容寻址附件由平台独立保留，不随会话日志删除。
-
-## 配置 / Configuration
-
-无。插件零配置挂载。
-
-## 开发 / Development
+提交前可运行以下检查：
 
 ```sh
 node --check lib/index.js
 node --check lib/client.js
-npm pack --dry-run   # 发布前的打包校验
+npm pack --dry-run
+```
+
+## 删除行为
+
+永久删除只作用于已归档会话，操作前会要求确认。针对 DSH `0.1.0-rc.6` 的默认 JSONL 会话存储，插件会删除会话专属目录，并同步移除对应的工作区与归档记账。
+
+DSH 的内容寻址附件由 DSH 独立管理，因此不会随会话记录一起删除。
+
+## 开发接口
+
+| 路由 | 方法 | 用途 |
+| --- | --- | --- |
+| `/archived/unarchive` | `POST` | 取消归档一个会话 |
+| `/archived/delete` | `POST` | 永久删除一个归档会话 |
+| `/archived/delete-project` | `POST` | 删除一个项目的全部归档会话 |
+| `/archived/delete-all` | `POST` | 删除全部归档会话 |
+
+## 目录
+
+```text
+dsh-better-archive/
+├── lib/
+│   ├── index.js        # DSH Host 路由与会话操作
+│   └── client.js       # 归档页面与侧边栏入口
+├── cordis.patch.yml    # Host 挂载配置
+├── package.json        # 插件声明
+└── assets/             # README 截图
 ```
 
 ## License
