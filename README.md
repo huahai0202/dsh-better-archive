@@ -58,11 +58,12 @@ dsh-better-archive/
 
 | 路由 | 方法 | 说明 |
 | --- | --- | --- |
-| `/archived/list` | GET | 返回 `{ archived: [{ id, title, createdAt }] }` |
 | `/archived/unarchive` | POST | body `{ sessionId }`，取消归档 |
 | `/archived/delete` | POST | body `{ sessionId }`，永久删除单个会话 |
 | `/archived/delete-project` | POST | body `{ cwd }`，删除某项目全部归档会话 |
 | `/archived/delete-all` | POST | body `{ confirm: true }`，删除全部归档会话 |
+
+删除实现以 DSH `0.1.0-rc.6` 默认的 JSONL 会话后端为目标：会话日志位于独立的会话目录中，删除会移除该目录及其工作区记账；DSH 的内容寻址附件由平台独立保留，不随会话日志删除。
 
 ## 配置 / Configuration
 
