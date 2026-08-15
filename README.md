@@ -13,6 +13,7 @@ DSH 网页 GUI 的「已归档会话」面板插件：在侧边栏设置区新�
 ## 特性 / Features
 
 - 侧边栏设置区新增「已归档」入口（挂载到 `settings.section` slot）。
+- **跟随 DSH 语言设置**：侧边栏入口与面板文案均接入 DSH 的 i18n 系统（`dsh-client-locale`），中文模式下显示中文、英文模式下显示英文，切换语言实时生效、无需刷新。
 - 按项目分组列出已归档会话，支持搜索、按更新时间/字母排序、按项目筛选。
 - **取消归档**：补齐 DSH `WorkspaceRegistry` 缺失的 unarchive 能力。它与 `archiveSession` 走完全相同的持久化路径；取消归档后 api-proxy 自动推送 `host/archived-sessions-changed`，浏览器会话列表即时刷新。
 - **永久删除**：单个删除、按项目删除、全部删除（带确认弹窗，删除会话日志与工作区/归档记账）。
