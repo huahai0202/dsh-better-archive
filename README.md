@@ -2,7 +2,7 @@
 
 A DeepSeek Harness (DSH) web-GUI plugin that adds an **Archived** panel to the sidebar settings area — list archived sessions, **unarchive** them, or **permanently delete** them (individually, per project, or all at once).
 
-The UI is internationalized with **English as the default locale**; Simplified Chinese (zh) is bundled as a secondary locale. The panel auto-detects the browser language on first load and offers an `EN` / `中文` toggle in the panel header; the choice persists in `localStorage`.
+The UI is internationalized with **English as the default locale**; Simplified Chinese (zh) is bundled as a secondary locale. The panel **follows the DSH language setting** (Settings → General → Language) and offers an `Auto` / `English` / `中文` toggle in the panel header as a manual override; the choice persists in `localStorage`.
 
 > This is a fork of [huahai0202/dsh-better-archive](https://github.com/huahai0202/dsh-better-archive) with English-first internationalization.
 
@@ -20,7 +20,7 @@ The UI is internationalized with **English as the default locale**; Simplified C
 - Lists archived sessions grouped by project, with search, sorting (last updated / alphabetical), and per-project filtering.
 - **Unarchive** — fills the gap left by DSH's `WorkspaceRegistry`, which lacks an unarchive capability. It uses exactly the same persistence path as `archiveSession`; after unarchiving, api-proxy pushes `host/archived-sessions-changed` automatically and the browser session list refreshes immediately.
 - **Permanent delete** — delete one session, a whole project, or every session (with a confirmation dialog; removes session logs plus workspace/archive bookkeeping).
-- **Internationalization** — English by default with Simplified Chinese included; auto-detected from `navigator.language`, manually switchable in the panel header, and persisted across reloads.
+- **Internationalization** — follows the DSH language setting (Settings → General → Language) with English as the default locale; Simplified Chinese is included, a manual `Auto` / `English` / `中文` override is available in the panel header, and the choice persists across reloads.
 
 ## Install
 
@@ -76,9 +76,9 @@ dsh-better-archive/
 
 ## Internationalization
 
-- **Default locale:** English (`en`). Simplified Chinese (`zh`) is bundled as a secondary locale.
-- **Detection:** on first load the panel prefers `localStorage['dsh-better-archive:lang']` when set, then `navigator.language`, then English.
-- **Manual switch:** the `EN` / `中文` toggle in the panel header overrides detection and persists in `localStorage`.
+- **DSH language setting:** the panel follows the `locale` service the web GUI provides (the Settings → General → Language row) and re-renders live when that setting changes.
+- **Manual override:** the `Auto` / `English` / `中文` toggle in the panel header overrides the setting and persists in `localStorage['dsh-better-archive:lang']`; `Auto` clears the override so the panel follows the DSH setting again.
+- **Fallback chain:** without a manual override the panel uses the DSH setting, then `navigator.language`, then English (the default locale). Simplified Chinese (`zh`) is bundled as a secondary locale.
 - **Locale-aware details:** dates are formatted with `Intl.DateTimeFormat` for the active locale, alphabetical sorting uses `String.prototype.localeCompare` with the active language tag, and pluralization ("1 chat" / "3 chats" vs "3 个聊天") is locale-specific.
 - **Adding a locale:** add a table to `STRINGS` in `lib/client.js` and an entry in the header toggle. The host half (`lib/index.js`) is already language-neutral — its API messages are English.
 
