@@ -17,21 +17,22 @@ async function exists(path) {
   }
 }
 
-function request(body) {
-  const req = Readable.from([Buffer.from(JSON.stringify(body))])
-  req.method = 'POST'
+function request(body, method = 'POST') {
+  const chunks = body === undefined ? [] : [Buffer.from(JSON.stringify(body))]
+  const req = Readable.from(chunks)
+  req.method = method
   req.headers = { host: 'localhost:3000', referer: 'http://localhost:3000/settings' }
   return req
 }
 
-async function invoke(handler, body) {
+async function invoke(handler, body, method = 'POST') {
   let status
   let raw = ''
   const res = {
     writeHead(value) { status = value },
     end(value) { raw = String(value ?? '') },
   }
-  await handler(request(body), res)
+  await handler(request(body, method), res)
   return { status, body: JSON.parse(raw) }
 }
 
@@ -48,9 +49,14 @@ async function fixture(t, options = {}) {
     await writeFile(join(directory, 'session.jsonl'), `${id}\n`)
     directories.set(id, directory)
   }
+  for (const id of options.pendingIds ?? []) {
+    await writeFile(join(directories.get(id), '.dsh-better-archive-delete-pending'), 'pending\n')
+  }
 
   let state = { initialized: true, workspaceIds: ['workspace-1'], archivedSessionIds: [...ids] }
   const calls = []
+  const operations = []
+  let queue = Promise.resolve()
   const live = new Map((options.liveIds ?? []).map((id) => [id, { id, header: { id, cwd } }]))
   const workspace = {
     sessionIds: [...ids],
@@ -65,9 +71,12 @@ async function fixture(t, options = {}) {
     },
   }
   const registry = {
-    async enqueueOperation(operation) {
+    enqueueOperation(operation) {
       calls.push(['enqueue'])
-      return operation()
+      const result = queue.then(operation, operation)
+      queue = result.catch(() => {})
+      operations.push(result)
+      return result
     },
     requireState() { return state },
     async setState(next) {
@@ -104,6 +113,8 @@ async function fixture(t, options = {}) {
     logger: { warn(message) { warnings.push(message) } },
   }
   apply(ctx)
+  await Promise.allSettled(operations)
+  calls.length = 0
   return { calls, directories, registry, routes, state: () => state, warnings, workspace }
 }
 
@@ -117,14 +128,62 @@ test('unarchive uses the registry queue and updates its cached state', async (t)
   assert.deepEqual(app.calls.slice(0, 2), [['enqueue'], ['setState', []]])
 })
 
-test('live sessions are rejected without changing files or archive state', async (t) => {
+test('live sessions are marked for deletion after restart without changing archive state', async (t) => {
   const app = await fixture(t, { liveIds: ['session-1'] })
   const response = await invoke(app.routes.get('/archived/delete'), { sessionId: 'session-1' })
 
-  assert.equal(response.status, 409)
-  assert.match(response.body.error, /still live|live session/)
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, {
+    archived: ['session-1'],
+    deleted: 0,
+    scheduled: ['session-1'],
+  })
   assert.deepEqual(app.state().archivedSessionIds, ['session-1'])
   assert.equal(await exists(app.directories.get('session-1')), true)
+  assert.equal(await exists(join(app.directories.get('session-1'), '.dsh-better-archive-delete-pending')), true)
+})
+
+test('bulk deletion deletes cold sessions and schedules live sessions', async (t) => {
+  const app = await fixture(t, { ids: ['session-1', 'session-2'], liveIds: ['session-2'] })
+  const response = await invoke(app.routes.get('/archived/delete-all'), { confirm: true })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, {
+    archived: ['session-2'],
+    deleted: 1,
+    scheduled: ['session-2'],
+  })
+  assert.equal(await exists(app.directories.get('session-1')), false)
+  assert.equal(await exists(join(app.directories.get('session-2'), '.dsh-better-archive-delete-pending')), true)
+})
+
+test('startup cleanup permanently deletes a cold session with a pending marker', async (t) => {
+  const app = await fixture(t, { pendingIds: ['session-1'] })
+
+  assert.deepEqual(app.state().archivedSessionIds, [])
+  assert.deepEqual(app.workspace.sessionIds, [])
+  assert.equal(await exists(app.directories.get('session-1')), false)
+})
+
+test('startup keeps a pending marker while its session is still live', async (t) => {
+  const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'] })
+  const response = await invoke(app.routes.get('/archived/pending'), undefined, 'GET')
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { pending: ['session-1'] })
+  assert.deepEqual(app.state().archivedSessionIds, ['session-1'])
+  assert.equal(await exists(app.directories.get('session-1')), true)
+})
+
+test('unarchive cancels a pending deletion before changing archive state', async (t) => {
+  const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'] })
+  const marker = join(app.directories.get('session-1'), '.dsh-better-archive-delete-pending')
+  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { archived: [] })
+  assert.equal(await exists(marker), false)
+  assert.deepEqual(app.state().archivedSessionIds, [])
 })
 
 test('workspace failure leaves the artifact and archive state intact', async (t) => {
@@ -155,6 +214,7 @@ test('bulk deletion reports committed records when a later record fails', async 
 
   assert.equal(response.status, 500)
   assert.deepEqual(response.body.deleted, ['session-1'])
+  assert.deepEqual(response.body.scheduled, [])
   assert.deepEqual(response.body.archived, ['session-2'])
   assert.equal(await exists(app.directories.get('session-1')), false)
   assert.equal(await exists(app.directories.get('session-2')), true)
