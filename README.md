@@ -20,13 +20,15 @@
 
 ## 安装
 
-需要 Node.js 22.19+ 和 pnpm。
+需要 dsh 0.1.5-alpha.1+、Node.js 22.19+ 和 pnpm。
 
 ```sh
 dsh plugin --profile web add github:huahai0202/dsh-better-archive
 ```
 
 安装完成后重启 `dsh web`。插件会自动加入该 profile 的 `dsh.profile.bundles`；若未自动加入，请在该数组中添加 `"dsh-better-archive"`，然后重启 DSH Web。
+
+> 0.5.0 起适配 dsh 0.1.5-alpha.1：客户端模块系统改为 `dsh-client-modules`（旧版 `dsh-client-runtime` 已移除），Host 侧会话存储读取适配 `stat(id)` / 快照形 `list()`（仍兼容旧版的 `inspect(id)` / 表头形 `list()`）。旧版 dsh 请使用 0.4.x。
 
 ## 更新
 
@@ -56,7 +58,7 @@ npm pack --dry-run
 
 ## 删除行为
 
-永久删除只作用于已归档会话，操作前会要求确认。针对 DSH `0.1.2-alpha.1`（含 `0.1.1-rc.2`）的默认 JSONL 会话存储，插件会删除会话专属目录，并同步移除对应的工作区与归档记账。
+永久删除只作用于已归档会话，操作前会要求确认。针对 DSH `0.1.5-alpha.1`（兼容 `0.1.2-alpha.1` 与 `0.1.1-rc.2`）的默认 JSONL 会话存储，插件会删除会话专属目录，并同步移除对应的工作区与归档记账。
 
 DSH 的归档操作只会将会话从常规列表中隐藏，并不等于终止会话。删除行为取决于会话当前是否仍由 DSH 进程持有：
 

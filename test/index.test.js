@@ -89,11 +89,17 @@ async function fixture(t, options = {}) {
     },
     list() { return [workspace] },
   }
-  const persistence = {
-    async inspect(id) { return { meta: { id, cwd } } },
-    locate(meta) { return { kind: 'jsonl', path: join(directories.get(meta.id), 'session.jsonl') } },
-    async list() { return [] },
-  }
+  const persistence = options.legacyPersistence === true
+    ? {
+        async inspect(id) { return { meta: { id, cwd } } },
+        locate(meta) { return { kind: 'jsonl', path: join(directories.get(meta.id), 'session.jsonl') } },
+        async list() { return [] },
+      }
+    : {
+        async stat(id) { return { header: { id, cwd } } },
+        locate(meta) { return { kind: 'jsonl', path: join(directories.get(meta.id), 'session.jsonl') } },
+        async list() { return [] },
+      }
   const routes = new Map()
   const warnings = []
   const ctx = {
@@ -126,6 +132,15 @@ test('unarchive uses the registry queue and updates its cached state', async (t)
   assert.deepEqual(response.body, { archived: [] })
   assert.deepEqual(app.state().archivedSessionIds, [])
   assert.deepEqual(app.calls.slice(0, 2), [['enqueue'], ['setState', []]])
+})
+
+test('the legacy inspect(id) persistence spelling stays supported', async (t) => {
+  const app = await fixture(t, { legacyPersistence: true })
+  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { archived: [] })
+  assert.deepEqual(app.state().archivedSessionIds, [])
 })
 
 test('live sessions are marked for deletion after restart without changing archive state', async (t) => {
