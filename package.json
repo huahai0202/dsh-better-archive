@@ -1,7 +1,7 @@
 {
   "name": "dsh-better-archive",
   "description": "Sidebar Archived entry + archived-session panel with unarchive and delete, for the DeepSeek Harness web GUI",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
