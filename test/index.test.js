@@ -58,6 +58,8 @@ async function fixture(t, options = {}) {
   const operations = []
   let queue = Promise.resolve()
   const live = new Map((options.liveIds ?? []).map((id) => [id, { id, header: { id, cwd } }]))
+  // Ids whose artifact is gone: still archived, but unreadable from persistence.
+  const broken = new Set(options.brokenIds ?? [])
   const workspace = {
     sessionIds: [...ids],
     async detachSession(id) {
@@ -91,12 +93,12 @@ async function fixture(t, options = {}) {
   }
   const persistence = options.legacyPersistence === true
     ? {
-        async inspect(id) { return { meta: { id, cwd } } },
+        async inspect(id) { return broken.has(id) ? undefined : { meta: { id, cwd } } },
         locate(meta) { return { kind: 'jsonl', path: join(directories.get(meta.id), 'session.jsonl') } },
         async list() { return [] },
       }
     : {
-        async stat(id) { return { header: { id, cwd } } },
+        async stat(id) { return broken.has(id) ? undefined : { header: { id, cwd } } },
         locate(meta) { return { kind: 'jsonl', path: join(directories.get(meta.id), 'session.jsonl') } },
         async list() { return [] },
       }
@@ -231,6 +233,39 @@ test('bulk deletion reports committed records when a later record fails', async 
   assert.deepEqual(response.body.deleted, ['session-1'])
   assert.deepEqual(response.body.scheduled, [])
   assert.deepEqual(response.body.archived, ['session-2'])
+  assert.equal(await exists(app.directories.get('session-1')), false)
+  assert.equal(await exists(app.directories.get('session-2')), true)
+})
+
+test('pending tolerates an archived entry whose artifact is gone', async (t) => {
+  const app = await fixture(t, { brokenIds: ['session-1'] })
+  const response = await invoke(app.routes.get('/archived/pending'), undefined, 'GET')
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { pending: [] })
+  assert.deepEqual(app.state().archivedSessionIds, ['session-1'])
+  assert.ok(app.warnings.some((warning) => warning.includes('session-1')), 'the skipped entry is logged')
+})
+
+test('unarchive clears an archived entry whose artifact is gone', async (t) => {
+  const app = await fixture(t, { brokenIds: ['session-1'] })
+  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { archived: [] })
+  assert.deepEqual(app.state().archivedSessionIds, [])
+})
+
+test('bulk deletion skips unreadable entries and reports them', async (t) => {
+  const app = await fixture(t, { ids: ['session-1', 'session-2'], brokenIds: ['session-2'] })
+  const response = await invoke(app.routes.get('/archived/delete-all'), { confirm: true })
+
+  assert.equal(response.status, 200)
+  assert.equal(response.body.deleted, 1)
+  assert.deepEqual(response.body.scheduled, [])
+  assert.deepEqual(response.body.archived, ['session-2'])
+  assert.deepEqual(response.body.unresolved.map((entry) => entry.id), ['session-2'])
+  assert.match(response.body.unresolved[0].error, /does not have a JSONL artifact/)
   assert.equal(await exists(app.directories.get('session-1')), false)
   assert.equal(await exists(app.directories.get('session-2')), true)
 })
