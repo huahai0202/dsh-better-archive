@@ -26,11 +26,14 @@
 | 界面元素 | 使用组件 |
 | --- | --- |
 | 排序 / 项目筛选下拉、项目行「⋯」菜单 | `Menu`（锚点定位、点击外部关闭、Esc 关闭、选中打勾） |
+| 排序 / 项目筛选下拉的触发器 | `Button`（`ghost` 形状）+ DSH 设置页选择器同款底色 `--dsw-alias-bg-module-platform` |
 | 永久删除确认（单个 / 整个项目 / 全部） | `RiskConfirmation`（基于 `Modal`，自带警告图标、勾选确认与「确认按钮在勾选前保持禁用」的门禁） |
-| 全部删除、取消归档、图标按钮 | `Button`（`toolbar` / `outline` / `ghost` 变体与 `sm` / `md` 尺寸） |
+| 全部删除、取消归档、图标按钮 | `Button`（`outline` / `ghost` 变体与 `sm` / `md` 尺寸） |
 | 图标 | `IconArchiveOutline20`、`IconTrashOutline16`、`IconSearchOutline16`、`IconChevronDownOutline14`、`IconEllipsisOutline16`、`IconFolderOpen16` |
 
-`@deepseek-ai/dsh-client-ui-primitives` 是 DSH 内核在启动时注入浏览器模块表的基础模块，因此无需在 `dsh.client.external` 中声明。插件自己的样式只剩下组件无法表达的布局、一个破坏性强调色和滚动条皮肤。
+`@deepseek-ai/dsh-client-ui-primitives` 是 DSH 内核在启动时注入浏览器模块表的基础模块，因此无需在 `dsh.client.external` 中声明。插件自己的样式只剩下组件无法表达的布局、下拉底色、一个破坏性强调色和滚动条皮肤。
+
+> 不要用 `Button` 的 `toolbar` 变体做普通控件：它画的是 `--dsw-alias-button-tool-bar-fill`，这个令牌在 DSH 自带主题和第三方主题里都是同一个固定的半透明深灰（`rgba(84,85,87,0.5)`），叠在任何浅色底上都会变成中灰药丸。它只适合压在深色浮层上的工具栏。
 
 ## 安装
 
@@ -45,6 +48,8 @@ dsh plugin --profile web add github:huahai0202/dsh-better-archive
 > 0.5.0 起适配 dsh 0.1.5-alpha.1：客户端模块系统改为 `dsh-client-modules`（旧版 `dsh-client-runtime` 已移除），Host 侧会话存储读取适配 `stat(id)` / 快照形 `list()`（仍兼容旧版的 `inspect(id)` / 表头形 `list()`）。旧版 dsh 请使用 0.4.x。
 >
 > 0.6.0 起界面改为直接调用 DSH 内部 UI 组件（`@deepseek-ai/dsh-client-ui-primitives` 的 `Menu` / `RiskConfirmation` / `Button` 与图标），替换掉此前手写的下拉菜单、对话框与按钮；永久删除改为 DSH 的风险确认流程，需勾选确认后才可执行。同时修复了 0.5.1 中下拉菜单引用了已删除的 `ScrollingLabel` 导致「已归档」页面渲染失败的问题。这些组件需要 dsh 0.1.5-alpha.1+ 的浏览器模块表，旧版 dsh 请使用 0.5.x。
+>
+> 0.6.1 修复浅色主题下排序 / 项目筛选两颗下拉在浅色底上显示为中灰药丸的问题：不再使用 `Button` 的 `toolbar` 变体（其底色令牌是固定值，不随主题变化），改用 `ghost` 形状 + DSH 设置页选择器同款的 `--dsw-alias-bg-module-platform` 底色。
 
 ## 更新
 
