@@ -2,7 +2,7 @@
 
 > 为 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) Web GUI 提供完整、可管理的已归档会话视图。
 
-`dsh-better-archive` 会在 DSH 侧边栏的设置区域新增「已归档」入口。你可以查找和筛选归档会话、恢复会话，或按需永久删除不再需要的归档记录。
+`dsh-better-archive` 会在 DSH 的设置区域和左侧导航各提供一个「已归档」入口；0.8.0 起，会话区右侧的 Sidebar 也有一个「已归档」页面 tab（`archive` 类型，可从引导页的入口胶囊打开）。你可以查找和筛选归档会话、恢复会话，或按需永久删除不再需要的归档记录。
 
 ## 界面
 
@@ -13,6 +13,7 @@
 ## 功能
 
 - 在 DSH 设置区提供独立的「已归档」页面；0.7.0 起它同时是侧边栏的一级页面（「已归档」入口在侧边栏面板列表里），两处入口共用同一份界面。
+- 0.8.0 起在右侧 Sidebar 提供一个「已归档」页面 tab：以 `sidebar://archive` 页面类型（kind `archive`）注册，引导页的入口胶囊打开它，正文在面板窄列里沿用同一套搜索 / 筛选 / 排序 / 删除界面。
 - 归档会话时右上角弹出提示条，带「查看」（跳到已归档页）和「撤销」（取消归档）两个动作，悬停不自动消失。
 - 按项目查看归档会话；支持关键词搜索、项目筛选，以及按更新时间或名称排序。
 - 一键取消归档。恢复后会话会立即回到 DSH 的正常会话列表。
@@ -32,6 +33,7 @@
 | 全部删除、取消归档、图标按钮 | `Button`（`outline` / `ghost` 变体与 `sm` / `md` 尺寸） |
 | 归档提示条 | 自建外壳（DSH 的 `Toast` 只支持文字+图标，没有按钮位），取 DSH 的菜单表面、elevation 与「solid」反色药丸配方；内含 `IconArchiveOutline20` 与 `Button` |
 | 侧边栏「已归档」入口 | `main`（keyed 主面板）+ `sidebar.panellist`（导航行字形），经 `ctx.layout.selectPanel(id)` 打开 |
+| 右侧 Sidebar「已归档」tab | `ctx.sidebarRightTabs` 注册页面类型（kind `archive`，引导页入口胶囊）+ keyed `sidebar.right.pane.tab` 正文；正文接收框架注入的 `useSessions` / `useWorkspaces`，按面板窄列自适应布局 |
 | 图标 | `IconArchiveOutline20`、`IconTrashOutline16`、`IconSearchOutline16`、`IconChevronDownOutline14`、`IconEllipsisOutline16`、`IconFolderOpen16`、`IconCloseOutline16` |
 
 `@deepseek-ai/dsh-client-ui-primitives` 是 DSH 内核在启动时注入浏览器模块表的基础模块，因此无需在 `dsh.client.external` 中声明。插件自己的样式只剩下组件无法表达的布局、下拉底色、归档提示条外壳、一个破坏性强调色和滚动条皮肤。
@@ -55,6 +57,8 @@ dsh plugin --profile web add github:huahai0202/dsh-better-archive
 > 0.6.1 修复浅色主题下排序 / 项目筛选两颗下拉在浅色底上显示为中灰药丸的问题：不再使用 `Button` 的 `toolbar` 变体（其底色令牌是固定值，不随主题变化），改用 `ghost` 形状 + DSH 设置页选择器同款的 `--dsw-alias-bg-module-platform` 底色。
 >
 > 0.6.2 为纯内部整理 + 一个健壮性修复：4 个路由的 method / 同源 / body / 必填 / 错误处理统一收进一个 `registerRoute()`；删掉客户端里永远不会触发的 `notice` 状态；批量删除、读待删除状态、取消归档不再因为某条归档记录找不到会话文件而整体失败（详见「删除行为」）。
+>
+> 0.8.0 新增右侧 Sidebar 的「已归档」页面 tab：会话区右侧的停靠面里可打开一个归档管理页（`archive` 页面类型，引导页入口胶囊打开它）。正文复用同一份归档列表，按面板窄列自适应布局（38px 标题行 + 搜索满行 + 排序/筛选一行 + 列表为唯一滚动区）。`ctx.sidebarRightTabs` 服务缺失（旧版 dsh）时自动降级为不提供该入口，其余入口不受影响。
 >
 > 0.7.7 简化提示条展示逻辑：移除卡片折叠/堆叠机制，多个提示条默认直接纵向平铺展开展示，卡片间距清晰，保留悬停暂停倒计时与独立撤销/查看/关闭能力。
 >
