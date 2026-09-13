@@ -57,6 +57,8 @@ dsh plugin --profile web add github:huahai0202/dsh-better-archive
 >
 > 0.6.2 为纯内部整理 + 一个健壮性修复：4 个路由的 method / 同源 / body / 必填 / 错误处理统一收进一个 `registerRoute()`；删掉客户端里永远不会触发的 `notice` 状态；批量删除、读待删除状态、取消归档不再因为某条归档记录找不到会话文件而整体失败（详见「删除行为」）。
 >
+> 0.8.3 修复取消归档 / 删除后左侧会话列表被整体刷新（字幕式重排）的问题：客户端不再调用 `sessions.refresh()` 全量重拉会话列表。DSH 的会话树本就订阅并过滤 `archivedSessionIds`（`ui-workspace` 的 `SessionTree` / `deriveGroups`），Host 侧 `registry.setState` 推送归档集合变化后，列表会自动把恢复的会话显示回来、把删除的会话隐藏，无需整表重取。
+>
 > 0.8.2 移除右侧 Sidebar pane 里的标题行（「已归档的聊天」标题与「全部删除」按钮）：tab chip 已经显示「已归档」，列表直接以搜索/筛选行开始；整批删除仍可在设置区一节进行，行级删除与项目菜单不变。
 >
 > 0.8.1 移除 0.7.0 引入的左侧一级页面（`main` 主面板与 `sidebar.panellist` 导航行），归档管理统一走设置区一节与右侧 Sidebar tab。归档提示条的「查看」仅在当前打开了会话时显示（右侧栏是每会话一份的面），点击直达右侧栏的「已归档」tab；不再有回退到左侧主面板的路径。
