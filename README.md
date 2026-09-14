@@ -41,7 +41,7 @@
 
 ## 安装
 
-需要 dsh 0.1.5-alpha.1+、Node.js 22.19+ 和 pnpm。
+需要 dsh 0.1.5-rc.2+、Node.js 22.19+ 和 pnpm（0.8.5 起不再适配更早的 dsh 版本）。
 
 ```sh
 dsh plugin --profile web add github:huahai0202/dsh-better-archive
@@ -56,6 +56,8 @@ dsh plugin --profile web add github:huahai0202/dsh-better-archive
 > 0.6.1 修复浅色主题下排序 / 项目筛选两颗下拉在浅色底上显示为中灰药丸的问题：不再使用 `Button` 的 `toolbar` 变体（其底色令牌是固定值，不随主题变化），改用 `ghost` 形状 + DSH 设置页选择器同款的 `--dsw-alias-bg-module-platform` 底色。
 >
 > 0.6.2 为纯内部整理 + 一个健壮性修复：4 个路由的 method / 同源 / body / 必填 / 错误处理统一收进一个 `registerRoute()`；删掉客户端里永远不会触发的 `notice` 状态；批量删除、读待删除状态、取消归档不再因为某条归档记录找不到会话文件而整体失败（详见「删除行为」）。
+>
+> 0.8.5 移除对旧版 dsh 的适配，只支持 0.1.5-rc.2+：Host 侧不再兼容 0.1.2-alpha.1 的 `inspect(id)` / 表头形 `list()`（统一走 `stat(id)` 与快照形 `list()`）；客户端把 `sidebarRightTabs` / `sidebarRight` 声明进激活依赖（取代 0.8.4 的等待重试，从机制上消除激活时序竞态），并移除 toast 阶段字段缺失的回退与各处防御性降级。
 >
 > 0.8.4 修复右侧 Sidebar 的「已归档」tab 在某些重启后消失的问题：`sidebarRightTabs` 由右侧栏特性在自己的 apply 里提供，包之间的激活顺序没有保证——本插件先激活时一次性检查拿不到服务，整个右侧栏注册被静默跳过。现在注册等待服务出现（有界重试约 12 秒，随插件 fiber 清理），服务就绪立即注册；旧版 dsh 无该服务时依旧降级，其余入口不受影响。
 >
