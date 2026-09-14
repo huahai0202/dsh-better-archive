@@ -6,9 +6,13 @@
 
 ## 界面
 
-| 深色模式 | 浅色模式 |
+全部为深色模式。左上起：右侧 Sidebar 的「已归档」tab、设置区的「已归档」一节、右侧 Sidebar 的引导页（入口胶囊）、归档提示条。
+
+| 右侧 Sidebar「已归档」 | 设置区「已归档」 |
 | :---: | :---: |
-| <img src="./assets/screenshot-dark.png" alt="深色模式下的已归档会话页面" width="420" /> | <img src="./assets/screenshot-light.png" alt="浅色模式下的已归档会话页面" width="420" /> |
+| <img src="./assets/screenshot-sidebar.png" alt="右侧 Sidebar 的已归档页面" width="380" /> | <img src="./assets/screenshot-settings.png" alt="设置区的已归档页面" width="460" /> |
+| **引导页入口胶囊** | **归档提示条** |
+| <img src="./assets/screenshot-guide.png" alt="右侧 Sidebar 引导页的已归档入口" width="380" /> | <img src="./assets/screenshot-toast.png" alt="归档提示条" width="500" /> |
 
 ## 功能
 
