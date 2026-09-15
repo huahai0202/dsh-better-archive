@@ -83,6 +83,7 @@ async function fixture(t, options = {}) {
     requireState() { return state },
     async setState(next) {
       calls.push(['setState', [...next.archivedSessionIds]])
+      if (options.setStateFailure) throw new Error('setState failed')
       state = next
     },
     async replaceHeaderIndex(headers) {
@@ -91,8 +92,14 @@ async function fixture(t, options = {}) {
     },
     list() { return [workspace] },
   }
+  // Every `stat` reads a stored header (a directory scan plus a decoded first
+  // line in the real JSONL backend), so the fixture counts them.
+  let headerReads = 0
   const persistence = {
-    async stat(id) { return broken.has(id) ? undefined : { header: { id, cwd } } },
+    async stat(id) {
+      headerReads++
+      return broken.has(id) ? undefined : { header: { id, cwd } }
+    },
     locate(meta) { return { kind: 'jsonl', path: join(directories.get(meta.id), 'session.jsonl') } },
     async list() { return [] },
   }
@@ -121,7 +128,17 @@ async function fixture(t, options = {}) {
   apply(ctx)
   await Promise.allSettled(operations)
   calls.length = 0
-  return { calls, directories, events, registry, routes, state: () => state, warnings, workspace }
+  return {
+    calls,
+    directories,
+    events,
+    headerReads: () => headerReads,
+    registry,
+    routes,
+    state: () => state,
+    warnings,
+    workspace,
+  }
 }
 
 test('unarchive uses the registry queue and updates its cached state', async (t) => {
@@ -232,6 +249,50 @@ test('unarchive cancels a pending deletion before changing archive state', async
   assert.deepEqual(response.body, { archived: [] })
   assert.equal(await exists(marker), false)
   assert.deepEqual(app.state().archivedSessionIds, [])
+})
+
+test('a failed unarchive keeps the session scheduled for deletion', async (t) => {
+  const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'], setStateFailure: true })
+  const marker = join(app.directories.get('session-1'), '.dsh-better-archive-delete-pending')
+  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
+
+  // The archive set never changed, so the one write this call performed first —
+  // clearing the marker — has to be undone or the scheduled deletion is lost.
+  assert.equal(response.status, 500)
+  assert.match(response.body.error, /setState failed/)
+  assert.equal(await exists(marker), true)
+  assert.deepEqual(app.state().archivedSessionIds, ['session-1'])
+})
+
+test('the pending read reuses a directory this process already resolved', async (t) => {
+  const app = await fixture(t)
+  const before = app.headerReads()
+
+  const first = await invoke(app.routes.get('/archived/pending'), undefined, 'GET')
+  const afterFirst = app.headerReads()
+  const second = await invoke(app.routes.get('/archived/pending'), undefined, 'GET')
+
+  assert.equal(first.status, 200)
+  assert.deepEqual(first.body, { pending: [] })
+  assert.deepEqual(second.body, { pending: [] })
+  // One header read to learn where the session lives; the next request probes
+  // only the marker file.
+  assert.equal(afterFirst - before, 1)
+  assert.equal(app.headerReads(), afterFirst)
+})
+
+test('deletion still re-reads the header instead of trusting the memo', async (t) => {
+  const app = await fixture(t)
+  await invoke(app.routes.get('/archived/pending'), undefined, 'GET')
+  const afterPending = app.headerReads()
+
+  const response = await invoke(app.routes.get('/archived/delete'), { sessionId: 'session-1' })
+
+  // A memoized directory must never stand in for "the artifact is still there".
+  assert.equal(response.status, 200)
+  assert.equal(response.body.deleted, 1)
+  assert.equal(app.headerReads() - afterPending, 1)
+  assert.equal(await exists(app.directories.get('session-1')), false)
 })
 
 test('workspace failure leaves the artifact and archive state intact', async (t) => {
