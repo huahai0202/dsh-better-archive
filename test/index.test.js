@@ -98,6 +98,9 @@ async function fixture(t, options = {}) {
   }
   const routes = new Map()
   const warnings = []
+  // Host events the plugin raises; `api-session/removed` is the browser-visible
+  // "this session is gone" signal the sidebar's session list acts on.
+  const events = []
   const ctx = {
     webServer: {
       register(route) {
@@ -106,6 +109,7 @@ async function fixture(t, options = {}) {
       },
     },
     effect(register) { return register() },
+    emit(name, ...args) { events.push([name, ...args]) },
     get(name) {
       if (name === 'workspaceRegistry') return registry
       if (name === 'sessionPersistence') return persistence
@@ -117,7 +121,7 @@ async function fixture(t, options = {}) {
   apply(ctx)
   await Promise.allSettled(operations)
   calls.length = 0
-  return { calls, directories, registry, routes, state: () => state, warnings, workspace }
+  return { calls, directories, events, registry, routes, state: () => state, warnings, workspace }
 }
 
 test('unarchive uses the registry queue and updates its cached state', async (t) => {
@@ -165,6 +169,48 @@ test('startup cleanup permanently deletes a cold session with a pending marker',
   assert.deepEqual(app.state().archivedSessionIds, [])
   assert.deepEqual(app.workspace.sessionIds, [])
   assert.equal(await exists(app.directories.get('session-1')), false)
+  // The row must leave any already-connected browser's session list too.
+  assert.deepEqual(app.events, [['api-session/removed', 'session-1']])
+})
+
+test('permanent deletion tells every client the session is gone', async (t) => {
+  const app = await fixture(t)
+  const response = await invoke(app.routes.get('/archived/delete'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { archived: [], deleted: 1, scheduled: [] })
+  // Deleting the artifact is invisible to a connected browser, and dropping the
+  // id from the archive set un-hides the stale row there; this event is what
+  // removes it from the left-hand session list.
+  assert.deepEqual(app.events, [['api-session/removed', 'session-1']])
+})
+
+test('a scheduled deletion notifies nothing while the session is still live', async (t) => {
+  const app = await fixture(t, { liveIds: ['session-1'] })
+  const response = await invoke(app.routes.get('/archived/delete'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body.scheduled, ['session-1'])
+  // The session is still live and still archived; the browser hides its row
+  // through the pending-deletion mirror, so nothing is removed yet.
+  assert.deepEqual(app.events, [])
+})
+
+test('bulk deletion notifies only the sessions it deleted immediately', async (t) => {
+  const app = await fixture(t, { ids: ['session-1', 'session-2'], liveIds: ['session-2'] })
+  const response = await invoke(app.routes.get('/archived/delete-all'), { confirm: true })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body.deleted, 1)
+  assert.deepEqual(app.events, [['api-session/removed', 'session-1']])
+})
+
+test('a failed deletion notifies nothing', async (t) => {
+  const app = await fixture(t, { detachFailureId: 'session-1' })
+  const response = await invoke(app.routes.get('/archived/delete'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 500)
+  assert.deepEqual(app.events, [])
 })
 
 test('startup keeps a pending marker while its session is still live', async (t) => {
