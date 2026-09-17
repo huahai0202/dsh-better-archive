@@ -18,7 +18,7 @@
 
 - 在 DSH 设置区提供独立的「已归档」页面。
 - 在会话区右侧的 Sidebar 提供一个「已归档」页面 tab：以 `sidebar://archive` 页面类型（kind `archive`）注册，引导页的入口胶囊打开它，chip 带归档图标，正文在面板窄列里沿用同一套搜索 / 筛选 / 排序 / 删除界面。0.7.0 曾引入的左侧一级页面与侧边导航行已在 0.8.1 移除，设置区与右侧栏是仅有的两个入口。
-- 归档会话时右上角弹出提示条，带「撤销」（取消归档）与「关闭」；「查看」仅在当前打开了会话时出现（右侧栏是每会话一份的面），点击直达右侧 Sidebar 的「已归档」tab。悬停不自动消失。
+- 归档会话时右上角弹出提示条，带「查看」（直达右侧 Sidebar 的「已归档」tab）、「撤销」（取消归档）与「关闭」。右侧栏是每会话一份的面，所以当前没有打开的会话时，「查看」会先打开最近的一个会话（一个都没有时由 DSH 新开一个空会话）再打开该 tab。悬停不自动消失。
 - 按项目查看归档会话；支持关键词搜索、项目筛选，以及按更新时间或名称排序。
 - 一键取消归档。归档集合经由 workspace 快照推送，恢复的会话自动回到会话列表（0.8.3 起不再整表刷新，无列表重排闪动）。
 - 支持删除单个会话、某个项目下的全部归档会话，或清空全部归档会话；仍在使用的会话会在重启 DSH 后自动删除。永久删除走 DSH 自己的风险确认：需要先勾选「我已了解」才能按下确认按钮。
@@ -36,7 +36,7 @@
 | 永久删除确认（单个 / 整个项目 / 全部） | `RiskConfirmation`（基于 `Modal`，自带警告图标、勾选确认与「确认按钮在勾选前保持禁用」的门禁） |
 | 全部删除、取消归档、图标按钮 | `Button`（`outline` / `ghost` 变体与 `sm` / `md` 尺寸） |
 | 归档提示条 | 自建外壳（DSH 的 `Toast` 只支持文字+图标，没有按钮位），取 DSH 的菜单表面、elevation 与「solid」反色药丸配方；内含 `IconArchiveOutline20` 与 `Button` |
-| 右侧 Sidebar「已归档」tab | `ctx.sidebarRightTabs` 注册页面类型（kind `archive`，引导页入口胶囊）+ keyed `sidebar.right.pane.tab` 正文与 `sidebar.right.pane.tab.title` chip 图标；正文接收框架注入的 `useSessions` / `useWorkspaces`，按面板窄列自适应布局；提示条「查看」经 `ctx.sidebarRight.openTab('archive')` 打开它 |
+| 右侧 Sidebar「已归档」tab | `ctx.sidebarRightTabs` 注册页面类型（kind `archive`，引导页入口胶囊）+ keyed `sidebar.right.pane.tab` 正文与 `sidebar.right.pane.tab.title` chip 图标；正文接收框架注入的 `useSessions` / `useWorkspaces`，按面板窄列自适应布局；提示条「查看」经 `ctx.sidebarRight.openTab('archive')` 打开它。该列每会话一份，因此主视图没有会话时「查看」先经 `ctx.uiWorkspace.openSession` 打开最近的非归档会话（一个都没有时 `startSession` 新开一个空会话），再等 seat 挂载后打开 tab；是否有会话打开读会话摘要的 `retainedBy.mainView`（会话列表快照本身没有 current 字段） |
 | 图标 | `IconArchiveOutline20`、`IconTrashOutline16`、`IconSearchOutline16`、`IconChevronDownOutline14`、`IconEllipsisOutline16`、`IconFolderOpen16`、`IconCloseOutline16` |
 
 `@deepseek-ai/dsh-client-ui-primitives` 是 DSH 内核在启动时注入浏览器模块表的基础模块，因此无需在 `dsh.client.external` 中声明。插件自己的样式只剩下组件无法表达的布局、下拉底色、归档提示条外壳、一个破坏性强调色和滚动条皮肤。
@@ -53,6 +53,8 @@ dsh plugin --profile web add github:huahai0202/dsh-better-archive
 
 安装完成后重启 `dsh web`。插件会自动加入该 profile 的 `dsh.profile.bundles`；若未自动加入，请在该数组中添加 `"dsh-better-archive"`，然后重启 DSH Web。
 
+> 0.8.8 提示条「查看」不再时有时无：此前它用会话列表快照的 `list.current` 判断有没有会话打开，而该快照根本没有这个字段——判断恒为 false，「查看」实际从未渲染。现在改读会话摘要的 `retainedBy.mainView`（DSH 设置外壳判断「是否打开着会话」用的同一个信号）。「查看」同时改为始终可用：右侧栏是每会话一份的面，主视图没有会话时先打开最近的非归档会话（按 `updatedAt`，优先非空会话；一个都没有时由 `startSession` 新开一个空会话），再等该会话的 seat 挂载后打开 tab——`openTab` 在 seat 未挂载时会抛错，所以这一段按 100ms × 50 次重试，超时只记一条警告。
+>
 > 0.8.7 三处收尾。① 取消归档现在可回滚：它会先清掉待删除标记再改写归档集合，此前若集合写入失败，标记已经没了——「重启后删除」的意图被静默丢弃，而删除路径一直有对称的回滚（`restoreDeleteState`），现在由 `restorePendingDeletion` 把标记写回，失败依旧如实报出（写回也失败时抛 `AggregateError`）。② 读取待删除状态不再为每个归档 id 重读一次会话表头：在真实 JSONL 后端里一次表头读取 = 目录扫描 + 解压首行，而页面每次挂载都会问一次这个接口，所以现在按后端在进程内记忆已解析出的会话目录；只有这条读路径记忆，删除路径照旧读表头确认会话文件真的还在——记忆的目录绝不能替代「文件是否还存在」这个判断。③ 客户端不再在每次操作后重取待删除集合，改为按响应增量推进（批量删除中途失败时响应本身就带 `scheduled`，同样先镜像再报错），顺带消掉「删除已经成功、却因为待删除状态读取失败而弹错」；面板行与提示条「撤销」两个取消归档入口共用同一条缓存更新路径。
 >
 > 0.8.6 修复永久删除后左侧会话列表又冒出该会话、点开提示会话不存在的问题：0.8.3 依赖归档集合来隐藏被删会话，但删除本身会把 id 从归档集合里移走，而浏览器手里的会话列表只在页面加载时拉过一次——于是这一行重新可见，点开却已没有会话文件。现在每次物理删除都补发 DSH 自己的 `api-session/removed`（`api-session-controller` 在 `session/disposed` 上发的同一个事件，浏览器收到后只摘掉这一行），因此无需重拉整张列表。
