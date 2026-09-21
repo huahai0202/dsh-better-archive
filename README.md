@@ -33,7 +33,7 @@
 | 界面元素 | 使用组件 |
 | --- | --- |
 | 排序 / 项目筛选下拉、项目行「⋯」菜单 | `Menu`（锚点定位、点击外部关闭、Esc 关闭、选中打勾） |
-| 多选模式的行复选框 | `Checkbox`（受控原生复选框，行本身也可点击切换） |
+| 多选模式的行复选框 | 原生 `input` 复刻 DSH `Checkbox` 模块 CSS（该组件不透传 `aria-*` / `tabIndex`）；行本体是 `role="checkbox"` 的可操作控件，支持点击与 Space/Enter |
 | 排序 / 项目筛选下拉的触发器 | `Button`（`ghost` 形状）+ DSH 设置页选择器同款底色 `--dsw-alias-bg-module-platform` |
 | 永久删除确认（单个 / 整个项目 / 全部） | `RiskConfirmation`（基于 `Modal`，自带警告图标、勾选确认与「确认按钮在勾选前保持禁用」的门禁） |
 | 全部删除、取消归档、图标按钮 | `Button`（`outline` / `ghost` 变体与 `sm` / `md` 尺寸） |
@@ -100,6 +100,8 @@ dsh plugin --profile web add github:huahai0202/dsh-better-archive
 > 0.9.0 新增多选管理：设置区与右侧 Sidebar 的「已归档」页均有「选择」入口。进入多选模式后点击行或复选框勾选会话（选中行高亮），工具栏出现批量操作栏——「全选」作用于当前搜索 / 筛选后的可见行，可批量取消归档或批量删除；删除前仍须勾选风险确认，且标题会写明所选数量。批量删除走新增的 `/archived/delete-selected` 路由，复用批量删除管线（无法定位的条目照常上报在 `unresolved`）；已不在归档集合里的 id 会被跳过而非使整个批次失败。归档集合变化时自动剔除已消失的选中项。
 >
 > 0.9.1 修复取消归档全部失败的问题：共享待删除缓存的 `dropPendingDeleteId` 助手自 0.8.7 起被两处调用点引用，但其定义本身从未提交——提示条「撤销」与行内「取消归档」在请求成功后抛出 `ReferenceError`，被误报为失败。本次补上该定义，并新增客户端守卫测试（模块求值冒烟测试 + 共享助手「有调用必有定义」检查），防止这类零构建手工 bundle 独有的破坏再次流出。
+>
+> 0.9.2 多选模式的四处打磨。① 批量取消归档改走新增的 `/archived/unarchive-selected`：此前是 N 次单条请求、N 次状态写入、N 次归档集合快照推送（会话列表与面板各重渲染 N 次），中途失败还会留下恢复了一半的选中集；现在一次请求、一次 `setState`、一次推送，失败时整体回滚（含每个已清除的待删除标记）。② `/archived/delete-selected` 只解析选中 id 的会话表头，不再为删 3 个会话去读全部归档会话的表头（每次表头读取 = 目录扫描 + 解压首行）。③ 多选行补齐可访问性：行本体是 `role="checkbox"` 的可聚焦控件（Space/Enter 切换、品牌色焦点环、指针光标），行内复选框改为纯视觉元素——此前用的 DSH `Checkbox` 不透传 `aria-*`，输入框实际没有可访问名称。④ 多选模式下隐藏项目行的「⋯」删除菜单，两套破坏性范围不再同屏。
 
 ## 更新
 
@@ -160,6 +162,7 @@ DSH 的内容寻址附件由 DSH 独立管理，因此不会随会话记录一�
 | --- | --- | --- |
 | `/archived/pending` | `GET` | 查询标记为重启后删除的会话 |
 | `/archived/unarchive` | `POST` | 取消归档一个会话 |
+| `/archived/unarchive-selected` | `POST` | 一次性取消归档 `sessionIds` 列出的一组会话（多选批量操作，单次状态写入） |
 | `/archived/delete` | `POST` | 立即删除或安排重启后删除一个归档会话 |
 | `/archived/delete-selected` | `POST` | 删除或安排删除 `sessionIds` 列出的一组归档会话（多选批量操作） |
 | `/archived/delete-project` | `POST` | 删除或安排删除一个项目的全部归档会话 |

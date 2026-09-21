@@ -151,6 +151,59 @@ test('unarchive uses the registry queue and updates its cached state', async (t)
   assert.deepEqual(app.calls.slice(0, 2), [['enqueue'], ['setState', []]])
 })
 
+test('batch unarchive removes the listed ids in a single state write', async (t) => {
+  const app = await fixture(t, { ids: ['session-1', 'session-2', 'session-3'] })
+  const response = await invoke(app.routes.get('/archived/unarchive-selected'), {
+    sessionIds: ['session-1', 'session-3', 'session-missing'],
+  })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { archived: ['session-2'] })
+  assert.deepEqual(app.state().archivedSessionIds, ['session-2'])
+  // One snapshot push, not one per pick: the client re-renders once.
+  assert.deepEqual(app.calls.filter(([name]) => name === 'setState'), [['setState', ['session-2']]])
+})
+
+test('batch unarchive rejects an empty or malformed id list', async (t) => {
+  const app = await fixture(t)
+  const missing = await invoke(app.routes.get('/archived/unarchive-selected'), {})
+  const empty = await invoke(app.routes.get('/archived/unarchive-selected'), { sessionIds: [] })
+  const invalid = await invoke(app.routes.get('/archived/unarchive-selected'), { sessionIds: 'session-1' })
+
+  assert.equal(missing.status, 400)
+  assert.equal(empty.status, 400)
+  assert.equal(invalid.status, 400)
+  assert.deepEqual(app.state().archivedSessionIds, ['session-1'])
+})
+
+test('a failed batch unarchive restores every pending marker it cleared', async (t) => {
+  const app = await fixture(t, {
+    ids: ['session-1', 'session-2'],
+    pendingIds: ['session-1', 'session-2'],
+    liveIds: ['session-1', 'session-2'],
+    setStateFailure: true,
+  })
+  const response = await invoke(app.routes.get('/archived/unarchive-selected'), { sessionIds: ['session-1', 'session-2'] })
+
+  assert.equal(response.status, 500)
+  assert.match(response.body.error, /setState failed/)
+  for (const id of ['session-1', 'session-2']) {
+    assert.equal(await exists(join(app.directories.get(id), '.dsh-better-archive-delete-pending')), true)
+  }
+  assert.deepEqual(app.state().archivedSessionIds, ['session-1', 'session-2'])
+})
+
+test('selected deletion resolves only the listed ids', async (t) => {
+  const app = await fixture(t, { ids: ['session-1', 'session-2', 'session-3'] })
+  const before = app.headerReads()
+  const response = await invoke(app.routes.get('/archived/delete-selected'), { sessionIds: ['session-1'] })
+
+  assert.equal(response.status, 200)
+  assert.equal(response.body.deleted, 1)
+  // One header read for the one listed id — not one per archived session.
+  assert.equal(app.headerReads() - before, 1)
+})
+
 test('live sessions are marked for deletion after restart without changing archive state', async (t) => {
   const app = await fixture(t, { liveIds: ['session-1'] })
   const response = await invoke(app.routes.get('/archived/delete'), { sessionId: 'session-1' })
