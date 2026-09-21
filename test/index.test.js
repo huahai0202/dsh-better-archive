@@ -348,6 +348,38 @@ test('unarchive clears an archived entry whose artifact is gone', async (t) => {
   assert.deepEqual(app.state().archivedSessionIds, [])
 })
 
+test('selected deletion removes exactly the listed archived sessions', async (t) => {
+  const app = await fixture(t, { ids: ['session-1', 'session-2', 'session-3'] })
+  const response = await invoke(app.routes.get('/archived/delete-selected'), { sessionIds: ['session-1', 'session-3'] })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { archived: ['session-2'], deleted: 2, scheduled: [] })
+  assert.equal(await exists(app.directories.get('session-1')), false)
+  assert.equal(await exists(app.directories.get('session-2')), true)
+  assert.equal(await exists(app.directories.get('session-3')), false)
+})
+
+test('selected deletion skips ids that are not archived', async (t) => {
+  const app = await fixture(t, { ids: ['session-1'] })
+  const response = await invoke(app.routes.get('/archived/delete-selected'), { sessionIds: ['session-1', 'session-missing'] })
+
+  assert.equal(response.status, 200)
+  assert.equal(response.body.deleted, 1)
+  assert.deepEqual(app.events, [['api-session/removed', 'session-1']])
+})
+
+test('selected deletion rejects an empty or malformed id list', async (t) => {
+  const app = await fixture(t)
+  const missing = await invoke(app.routes.get('/archived/delete-selected'), {})
+  const empty = await invoke(app.routes.get('/archived/delete-selected'), { sessionIds: [] })
+  const invalid = await invoke(app.routes.get('/archived/delete-selected'), { sessionIds: 'session-1' })
+
+  assert.equal(missing.status, 400)
+  assert.equal(empty.status, 400)
+  assert.equal(invalid.status, 400)
+  assert.equal(await exists(app.directories.get('session-1')), true)
+})
+
 test('bulk deletion skips unreadable entries and reports them', async (t) => {
   const app = await fixture(t, { ids: ['session-1', 'session-2'], brokenIds: ['session-2'] })
   const response = await invoke(app.routes.get('/archived/delete-all'), { confirm: true })
