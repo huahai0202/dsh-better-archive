@@ -37,9 +37,9 @@
 | 排序 / 项目筛选下拉的触发器 | `Button`（`ghost` 形状）+ DSH 设置页选择器同款底色 `--dsw-alias-bg-module-platform` |
 | 永久删除确认（单个 / 整个项目 / 全部） | `RiskConfirmation`（基于 `Modal`，自带警告图标、勾选确认与「确认按钮在勾选前保持禁用」的门禁） |
 | 全部删除、取消归档、图标按钮 | `Button`（`outline` / `ghost` 变体与 `sm` / `md` 尺寸） |
-| 归档提示条 | 自建外壳（DSH 的 `Toast` 只支持文字+图标，没有按钮位），取 DSH 的菜单表面、elevation 与「solid」反色药丸配方；内含 `IconArchiveOutline20` 与 `Button` |
+| 归档提示条 | 自建外壳（DSH 的 `Toast` 只支持文字+图标，没有按钮位），取 DSH 的菜单表面、elevation 与「solid」反色药丸配方；内含 `IconArchiveOutlineRegular` 与 `Button` |
 | 右侧 Sidebar「已归档」tab | `ctx.sidebarRightTabs` 注册页面类型（kind `archive`，引导页入口胶囊）+ keyed `sidebar.right.pane.tab` 正文与 `sidebar.right.pane.tab.title` chip 图标；正文接收框架注入的 `useSessions` / `useWorkspaces`，按面板窄列自适应布局；提示条「查看」经 `ctx.sidebarRight.openTab('archive')` 打开它。该列每会话一份，因此主视图没有会话时「查看」先经 `ctx.uiWorkspace.openSession` 打开最近的非归档会话（一个都没有时 `startSession` 新开一个空会话），再等 seat 挂载后打开 tab；是否有会话打开读会话摘要的 `retainedBy.mainView`（会话列表快照本身没有 current 字段） |
-| 图标 | `IconArchiveOutline20`、`IconTrashOutline16`、`IconSearchOutline16`、`IconChevronDownOutline14`、`IconEllipsisOutline16`、`IconFolderOpen16`、`IconCloseOutline16` |
+| 图标 | `IconArchiveOutlineRegular`、`IconTrashOutlineRegular`、`IconSearchOutlineRegular`、`IconChevronDownOutlineRegular`、`IconEllipsisOutlineRegular`、`IconFolderOpenRegular`、`IconCloseOutlineRegular`（dsh 0.1.7 的尺寸中性权重名，`Regular` 为 1px 描边） |
 
 `@deepseek-ai/dsh-client-ui-primitives` 是 DSH 内核在启动时注入浏览器模块表的基础模块，因此无需在 `dsh.client.external` 中声明。插件自己的样式只剩下组件无法表达的布局、下拉底色、归档提示条外壳、一个破坏性强调色和滚动条皮肤。
 
@@ -47,7 +47,7 @@
 
 ## 安装
 
-需要 dsh 0.1.5-rc.2+、Node.js 22.19+ 和 pnpm（0.8.5 起不再适配更早的 dsh 版本）。
+需要 dsh 0.1.7-alpha.2+、Node.js 22.19+ 和 pnpm（0.9.3 起不再适配更早的 dsh 版本；图标、引导页条目契约与 peerDependencies 均按 0.1.7 的浏览器模块表校准）。
 
 ```sh
 dsh plugin --profile web add github:huahai0202/dsh-better-archive
@@ -102,6 +102,8 @@ dsh plugin --profile web add github:huahai0202/dsh-better-archive
 > 0.9.1 修复取消归档全部失败的问题：共享待删除缓存的 `dropPendingDeleteId` 助手自 0.8.7 起被两处调用点引用，但其定义本身从未提交——提示条「撤销」与行内「取消归档」在请求成功后抛出 `ReferenceError`，被误报为失败。本次补上该定义，并新增客户端守卫测试（模块求值冒烟测试 + 共享助手「有调用必有定义」检查），防止这类零构建手工 bundle 独有的破坏再次流出。
 >
 > 0.9.2 多选模式的四处打磨。① 批量取消归档改走新增的 `/archived/unarchive-selected`：此前是 N 次单条请求、N 次状态写入、N 次归档集合快照推送（会话列表与面板各重渲染 N 次），中途失败还会留下恢复了一半的选中集；现在一次请求、一次 `setState`、一次推送，失败时整体回滚（含每个已清除的待删除标记）。② `/archived/delete-selected` 只解析选中 id 的会话表头，不再为删 3 个会话去读全部归档会话的表头（每次表头读取 = 目录扫描 + 解压首行）。③ 多选行补齐可访问性：行本体是 `role="checkbox"` 的可聚焦控件（Space/Enter 切换、品牌色焦点环、指针光标），行内复选框改为纯视觉元素——此前用的 DSH `Checkbox` 不透传 `aria-*`，输入框实际没有可访问名称。④ 多选模式下隐藏项目行的「⋯」删除菜单，两套破坏性范围不再同屏。
+>
+> 0.9.3 适配 dsh 0.1.7-alpha.2。① 0.1.7 把产品图标从画板尺寸后缀改写为尺寸中性权重名（`IconArchiveOutline20` → `IconArchiveOutlineRegular`/`Medium`，渲染尺寸由 `size` 决定），旧名已从模块表移除——此前插件的 7 个图标在 0.1.7 上全部静默丢失（`Icon` 解析不到就渲染空），现在统一按权重名取 `Regular`（DSH 自己在列表/行内用的同款 1px 描边）。② 引导页条目补齐 0.1.7 要求的稳定 `id`：`sidebarRightTabs` 用它做条目身份、`sidebar.right.tab.guide.entry` 的槽位键，并拒绝同一 provider 内的重复 id。③ `peerDependencies` 的 dsh 下限提到 `^0.1.7-alpha.2`——semver 的预发布排除规则下，旧的 `^0.1.5-rc.2` 本就不覆盖 `0.1.7-alpha.2`。
 
 ## 更新
 
