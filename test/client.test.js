@@ -268,6 +268,18 @@ test('the plugin adds no archive toast of its own', () => {
   }
 })
 
+test('unarchiving goes through the official workspace service, not a private route', () => {
+  // `ctx.workspaces.unarchiveSession` is DSH's documented browser path: it calls
+  // the Host Remote, raises the `workspace/session-unarchiving` providers, and
+  // installs the returned archive set into the shared model. The plugin must
+  // not keep a parallel HTTP surface for the same state transition.
+  assert.ok(source.includes("ctx.get('workspaces')"), 'the official client service is the unarchive path')
+  assert.ok(
+    !source.includes("'/archived/unarchive'") && !source.includes("'/archived/unarchive-selected'"),
+    'no plugin-owned unarchive route should remain',
+  )
+})
+
 test('every product glyph the client draws is a 0.2.2 export name', () => {
   const used = new Set([...source.matchAll(/['"](Icon[A-Za-z0-9]+)['"]/g)].map((match) => match[1]))
   assert.ok(used.size > 0, 'expected the client to draw at least one glyph')

@@ -58,6 +58,8 @@ dsh plugin --profile web add github:huahai0202/dsh-better-archive
 
 安装完成后重启 `dsh web`。插件会自动加入该 profile 的 `dsh.profile.bundles`；若未自动加入，请在该数组中添加 `"dsh-better-archive"`，然后重启 DSH Web。
 
+> 0.10.3 取消归档改走官方 Remote。DSH 在客户端暴露了 `ctx.workspaces.unarchiveSession(sessionId)`（背后是 `remote.workspace.unarchiveSession`），它本身就是一条完整通道：调用 Host 的 `workspaceRegistry.unarchiveSession`、触发 `workspace/session-unarchiving` 钩子、并把返回的归档集合装进共享模型，会话树与本面板因此同步刷新。所以插件删掉了自己那两条 `/archived/unarchive` 与 `/archived/unarchive-selected` 路由，只保留 `/archived/clear-pending` —— 待删除标记是插件自己的记账，必须在 DSH 取消归档之后清掉，否则下次重启会把刚恢复的会话删掉。批量取消归档没有 Remote 形态，改为逐个串行调用同一条官方路径。剩下的私有依赖只有删除链路，因为 DSH 没有任何公开的「删除会话」API。
+
 > 0.10.2 移除插件自带的归档提示条。DSH 0.2.2 在归档时自己就会弹出 `workspace.toast`（带「撤销」与「筛选已归档会话」），两个条一起出现是重复的，所以整块删掉：`ArchivedToastItem` / `ArchiveToastHost`、它注册的那条 `shell.overlay` 槽位、仅供它使用的 12 条 CSS、`toastArchived` / `toastView` / `toastUndo` / `toastUndoFailed` 四个文案键，以及随之失效的 `openArchivedView` / `revealArchiveTab` / `mainViewSessionId` / `mostRecentSessionId`。归档提示条上的「查看」入口因此消失 —— 右侧栏「已归档」tab 仍在引导页入口胶囊与 tab 栏里可打开。插件页说明与 `docs/preview*.svg` 也去掉了提示条，只画两个管理界面。测试新增一条断言：`shell.overlay` 不得被注册，源码里不得再出现提示条相关符号。
 
 > 0.10.1 修复 0.10.0 引入的激活崩溃：插件在浏览器里报 `cannot get property "sidebarRight" without inject`，结果整个客户端 `apply` 当场失败——设置区那一节也一起消失，看起来像「没生效」。原因是 Cordis 的上下文代理对**未在 `inject` 里声明**的服务属性访问会直接抛异常（`ctx.get(x)` 才返回 `undefined`），而 0.10.0 写的 `ctx.get(x) || ctx.x` 回退恰好会在 `get` 落空时读到那个属性。现在所有服务一律只用 `ctx.get(...)` 读取；缺失的右侧栏服务只让对应入口降级，不再影响设置区。测试也改成在会抛异常的严格上下文下运行，并新增一条回归用例（把旧写法改回去会立刻失败）。
@@ -169,17 +171,45 @@ DSH 的内容寻址附件由 DSH 独立管理，因此不会随会话记录一�
 
 ## 开发接口
 
+### 用的官方接口
+
+| 能力 | 通道 |
+| --- | --- |
+| 取消归档 | 客户端 `ctx.workspaces.unarchiveSession(sessionId)`（→ Host `remote.workspace.unarchiveSession` → `workspaceRegistry.unarchiveSession`，并触发 `workspace/session-unarchiving`） |
+| 归档集合读取 | 组件注入的标准 props `useWorkspaces(snapshot => snapshot.archivedSessionIds)`，走 workspace 快照推送 |
+| 会话列表 | 标准 props `useSessions`（`byId` / `ids` / `phase`），含 `retainedBy.mainView` |
+| 会话文件定位 | `sessionPersistence.stat(id)` / `list()` 快照上的 `location: { kind, path }` |
+| 界面挂载 | `ctx.slots.register` / `ctx.slots.inject`（`settings.section`、`sidebar.right.pane.tab`、`sidebar.right.pane.tab.title`） |
+| 右侧栏页面类型 | `ctx.sidebarRightTabs.register`（kind `archive` + 引导页入口胶囊） |
+| 文案 | `ctx.locale.register` / `ctx.get('locale')`，跟随 DSH 语言设置 |
+| HTTP 路由 | `ctx.webServer.register({ kind: 'exact', path, handler })` |
+| 会话消失通知 | `ctx.emit('api-session/removed', id)`（转发白名单内的 Host 事件） |
+
+### 插件自己的路由
+
 | 路由 | 方法 | 用途 |
 | --- | --- | --- |
 | `/archived/pending` | `GET` | 查询标记为重启后删除的会话 |
-| `/archived/unarchive` | `POST` | 取消归档一个会话 |
-| `/archived/unarchive-selected` | `POST` | 一次性取消归档 `sessionIds` 列出的一组会话（多选批量操作，单次状态写入） |
+| `/archived/clear-pending` | `POST` | 清掉一个会话的待删除标记（DSH 取消归档之后调用） |
 | `/archived/delete` | `POST` | 立即删除或安排重启后删除一个归档会话 |
 | `/archived/delete-selected` | `POST` | 删除或安排删除 `sessionIds` 列出的一组归档会话（多选批量操作） |
 | `/archived/delete-project` | `POST` | 删除或安排删除一个项目的全部归档会话 |
 | `/archived/delete-all` | `POST` | 删除或安排删除全部归档会话 |
 
-三个删除路由返回 `{ archived, deleted, scheduled }`（`archived` 为删除后剩余的归档 id，`deleted` 为已立即删除的数量，`scheduled` 为已安排重启后删除的 id）。两个批量路由在有条目无法定位时额外返回 `unresolved: [{ id, error }]`。
+三个删除路由返回 `{ archived, deleted, scheduled }`（`archived` 为删除后剩余的归档 id，`deleted` 为已立即删除的数量，`scheduled` 为已安排重启后删除的 id）。两个批量路由在有条目无法定位时额外返回 `unresolved: [{ id, error }]`。取消归档不再有插件路由。
+
+### 仍然是私有的部分
+
+DSH **没有**任何公开的「删除会话」能力 —— `WorkspaceRegistry`、Session Controller、Remote 三处都没有。永久删除因此只能靠下面这些非公开面，这是本插件唯一无法官方化的地方：
+
+| 用到的私有面 | 为什么没有替代 |
+| --- | --- |
+| `workspaceRegistry.enqueueOperation` / `requireState` / `setState` / `replaceHeaderIndex` | 源码里是 `private`；没有公开的「移除归档 id」「改写归档集合」方法 |
+| `workspace.detachSession` / `attachSession` | `Workspace` 接口公开，但没有「删除会话」的配套语义 |
+| `sessionPersistence.locate(header)` | 抽象基类只有 `create/open/flush/stat/list`；`location` 只出现在 jsonl 后端的快照上，插件用它算目录时以快照优先、`locate` 兜底 |
+| 直接 `rm()` 会话 JSONL 目录 | 没有删除 API，只能自己删文件 |
+
+这些调用都带能力探测：缺方法会抛明确错误而不是静默失败，DSH 升级破坏私有面时会在操作时报出 `unsupported DSH workspace registry: missing …`。
 
 ## 目录
 

@@ -165,37 +165,59 @@ async function fixture(t, options = {}) {
   }
 }
 
-test('unarchive runs on the registry queue and removes the id from the archive set', async (t) => {
-  const app = await fixture(t)
-  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
+// Unarchiving has no route of its own any more: the browser calls DSH's
+// `remote.workspace.unarchiveSession` and then this plugin's
+// `/archived/clear-pending` for the marker it owns. The tests below cover the
+// half that is still this plugin's: the marker bookkeeping.
 
-  assert.equal(response.status, 200)
-  assert.deepEqual(response.body, { archived: [] })
-  assert.deepEqual(app.state().archivedSessionIds, [])
-  // dsh 0.2.2's public unarchive is used when present, so the
-  // `workspace/session-unarchiving` providers stay in step.
-  assert.deepEqual(app.calls.slice(0, 2), [['enqueue'], ['unarchiveSession', 'session-1']])
-})
-
-test('unarchive falls back to a direct state write on a release without the public API', async (t) => {
-  const app = await fixture(t, { nativeUnarchive: false })
-  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
-
-  assert.equal(response.status, 200)
-  assert.deepEqual(response.body, { archived: [] })
-  assert.deepEqual(app.state().archivedSessionIds, [])
-  assert.deepEqual(app.calls.slice(0, 2), [['enqueue'], ['setState', []]])
-})
-
-test('a failed native unarchive puts the pending marker back', async (t) => {
-  const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'], setStateFailure: true })
+test('clear-pending removes the marker without touching the archive set', async (t) => {
+  const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'] })
   const marker = join(app.directories.get('session-1'), '.dsh-better-archive-delete-pending')
-  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
+  const response = await invoke(app.routes.get('/archived/clear-pending'), { sessionId: 'session-1' })
 
-  assert.equal(response.status, 500)
-  assert.match(response.body.error, /setState failed/)
-  assert.equal(await exists(marker), true)
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { cleared: true })
+  assert.equal(await exists(marker), false)
+  // DSH owns the archive set; this route must not write it.
   assert.deepEqual(app.state().archivedSessionIds, ['session-1'])
+})
+
+test('clear-pending succeeds for an entry DSH already unarchived', async (t) => {
+  // Order of events: the Remote replies first, so by the time this runs the id
+  // may already be gone from the archive set.
+  const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'] })
+  app.state().archivedSessionIds = []
+  const marker = join(app.directories.get('session-1'), '.dsh-better-archive-delete-pending')
+  const response = await invoke(app.routes.get('/archived/clear-pending'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { cleared: true })
+  assert.equal(await exists(marker), false)
+})
+
+test('clear-pending reports an unresolved entry without failing', async (t) => {
+  const app = await fixture(t, { brokenIds: ['session-1'] })
+  const response = await invoke(app.routes.get('/archived/clear-pending'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { cleared: false })
+})
+
+test('clear-pending requires a session id', async (t) => {
+  const app = await fixture(t)
+  const response = await invoke(app.routes.get('/archived/clear-pending'), {})
+
+  assert.equal(response.status, 400)
+  assert.equal(response.body.error, 'sessionId is required')
+})
+
+test('no unarchive route is registered by the plugin any more', async (t) => {
+  const app = await fixture(t)
+
+  // The official Remote owns unarchiving, so a second HTTP surface would be a
+  // parallel implementation of the same state transition.
+  assert.equal(app.routes.has('/archived/unarchive'), false)
+  assert.equal(app.routes.has('/archived/unarchive-selected'), false)
 })
 
 test('the artifact location comes from the stat snapshot when the backend reports one', async (t) => {
@@ -223,47 +245,15 @@ test('a backend that reports no artifact location leaves the entry unresolved', 
   assert.deepEqual(response.body.unresolved.map((entry) => entry.id).sort(), ['session-1', 'session-2'])
 })
 
-test('batch unarchive removes the listed ids in a single state write', async (t) => {
+test('batch unarchive is gone with its route, so no state write happens behind DSH', async (t) => {
+  // The batch path used to be one private `setState`. With the official Remote
+  // taking over unarchiving there is no batch form, so the plugin must not
+  // write the archive set at all.
   const app = await fixture(t, { ids: ['session-1', 'session-2', 'session-3'] })
-  const response = await invoke(app.routes.get('/archived/unarchive-selected'), {
-    sessionIds: ['session-1', 'session-3', 'session-missing'],
-  })
-
-  assert.equal(response.status, 200)
-  assert.deepEqual(response.body, { archived: ['session-2'] })
-  assert.deepEqual(app.state().archivedSessionIds, ['session-2'])
-  // One snapshot push, not one per pick: the client re-renders once.
-  assert.deepEqual(app.calls.filter(([name]) => name === 'setState'), [['setState', ['session-2']]])
+  assert.equal(app.routes.has('/archived/unarchive-selected'), false)
+  assert.deepEqual(app.calls.filter(([name]) => name === 'setState'), [])
 })
 
-test('batch unarchive rejects an empty or malformed id list', async (t) => {
-  const app = await fixture(t)
-  const missing = await invoke(app.routes.get('/archived/unarchive-selected'), {})
-  const empty = await invoke(app.routes.get('/archived/unarchive-selected'), { sessionIds: [] })
-  const invalid = await invoke(app.routes.get('/archived/unarchive-selected'), { sessionIds: 'session-1' })
-
-  assert.equal(missing.status, 400)
-  assert.equal(empty.status, 400)
-  assert.equal(invalid.status, 400)
-  assert.deepEqual(app.state().archivedSessionIds, ['session-1'])
-})
-
-test('a failed batch unarchive restores every pending marker it cleared', async (t) => {
-  const app = await fixture(t, {
-    ids: ['session-1', 'session-2'],
-    pendingIds: ['session-1', 'session-2'],
-    liveIds: ['session-1', 'session-2'],
-    setStateFailure: true,
-  })
-  const response = await invoke(app.routes.get('/archived/unarchive-selected'), { sessionIds: ['session-1', 'session-2'] })
-
-  assert.equal(response.status, 500)
-  assert.match(response.body.error, /setState failed/)
-  for (const id of ['session-1', 'session-2']) {
-    assert.equal(await exists(join(app.directories.get(id), '.dsh-better-archive-delete-pending')), true)
-  }
-  assert.deepEqual(app.state().archivedSessionIds, ['session-1', 'session-2'])
-})
 
 test('selected deletion resolves only the listed ids', async (t) => {
   const app = await fixture(t, { ids: ['session-1', 'session-2', 'session-3'] })
@@ -365,30 +355,6 @@ test('startup keeps a pending marker while its session is still live', async (t)
   assert.equal(await exists(app.directories.get('session-1')), true)
 })
 
-test('unarchive cancels a pending deletion before changing archive state', async (t) => {
-  const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'] })
-  const marker = join(app.directories.get('session-1'), '.dsh-better-archive-delete-pending')
-  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
-
-  assert.equal(response.status, 200)
-  assert.deepEqual(response.body, { archived: [] })
-  assert.equal(await exists(marker), false)
-  assert.deepEqual(app.state().archivedSessionIds, [])
-})
-
-test('a failed unarchive keeps the session scheduled for deletion', async (t) => {
-  const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'], setStateFailure: true })
-  const marker = join(app.directories.get('session-1'), '.dsh-better-archive-delete-pending')
-  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
-
-  // The archive set never changed, so the one write this call performed first —
-  // clearing the marker — has to be undone or the scheduled deletion is lost.
-  assert.equal(response.status, 500)
-  assert.match(response.body.error, /setState failed/)
-  assert.equal(await exists(marker), true)
-  assert.deepEqual(app.state().archivedSessionIds, ['session-1'])
-})
-
 test('the pending read reuses a directory this process already resolved', async (t) => {
   const app = await fixture(t)
   const before = app.headerReads()
@@ -464,13 +430,15 @@ test('pending tolerates an archived entry whose artifact is gone', async (t) => 
   assert.ok(app.warnings.some((warning) => warning.includes('session-1')), 'the skipped entry is logged')
 })
 
-test('unarchive clears an archived entry whose artifact is gone', async (t) => {
+test('clear-pending tolerates an archived entry whose artifact is gone', async (t) => {
+  // DSH's own unarchive has no existence check — removing an id cannot
+  // introduce an unknown one — so this plugin's marker cleanup must survive the
+  // same entry rather than failing the click.
   const app = await fixture(t, { brokenIds: ['session-1'] })
-  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
+  const response = await invoke(app.routes.get('/archived/clear-pending'), { sessionId: 'session-1' })
 
   assert.equal(response.status, 200)
-  assert.deepEqual(response.body, { archived: [] })
-  assert.deepEqual(app.state().archivedSessionIds, [])
+  assert.deepEqual(response.body, { cleared: false })
 })
 
 test('selected deletion removes exactly the listed archived sessions', async (t) => {
