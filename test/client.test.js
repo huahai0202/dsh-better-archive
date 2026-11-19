@@ -76,10 +76,14 @@ function loadClient() {
   }
   const requireStub = (name) => {
     if (name === 'react') {
+      // A minimal but faithful shape: enough for a component body to render a
+      // tree the click-path test can walk (createElement keeps its arguments,
+      // state reads its initializer). This is not a React renderer.
       return {
-        createElement: () => null,
-        useState: (value) => [value, () => {}],
+        createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
+        useState: (value) => [typeof value === 'function' ? value() : value, () => {}],
         useEffect: () => {},
+        useMemo: (factory) => factory(),
         useRef: (value) => ({ current: value }),
       }
     }
@@ -273,11 +277,30 @@ test('unarchiving goes through the official workspace service, not a private rou
   // the Host Remote, raises the `workspace/session-unarchiving` providers, and
   // installs the returned archive set into the shared model. The plugin must
   // not keep a parallel HTTP surface for the same state transition.
-  assert.ok(source.includes("ctx.get('workspaces')"), 'the official client service is the unarchive path')
+  assert.ok(source.includes("service('workspaces')"), 'the official client service is the unarchive path')
   assert.ok(
     !source.includes("'/archived/unarchive'") && !source.includes("'/archived/unarchive-selected'"),
     'no plugin-owned unarchive route should remain',
   )
+})
+
+test('no component reaches the Context by name', () => {
+  // Slot components are handed props, never `ctx` — the contract forbids it —
+  // and `ctx` only exists inside apply()'s closure. A component that names it
+  // compiles fine and then throws ReferenceError on click, i.e. a dead button
+  // with no error in the UI. Components must go through `service(name)`.
+  const body = source.slice(0, source.indexOf('function apply(ctx)'))
+  const offenders = body.split('\n')
+    // Comments describe the contract; only executable code matters here.
+    .map((line, index) => ({ line, number: index + 1 }))
+    .filter(({ line }) => !/^\s*(\*|\/\/|\/\*)/.test(line))
+    .filter(({ line }) => /\bctx\s*\./.test(line))
+  assert.deepEqual(
+    offenders.map((entry) => `${entry.number}: ${entry.line.trim()}`),
+    [],
+    'a component body references ctx; use service(name) instead',
+  )
+  assert.ok(source.includes('function service(name)'), 'the service accessor exists for components')
 })
 
 test('every product glyph the client draws is a 0.2.2 export name', () => {
@@ -290,4 +313,53 @@ test('every product glyph the client draws is a 0.2.2 export name', () => {
         'the artboard-size spellings of 0.1.5/0.1.6 resolve to nothing at runtime',
     )
   }
+})
+
+test('clicking unarchive in a mounted section reaches the official service', async () => {
+  // The regression this pins: the component body named `ctx`, which only exists
+  // inside apply()'s closure, so the button threw ReferenceError on click and
+  // the panel did nothing — no request, no error. This renders the real section
+  // component outside apply and presses the button.
+  const { exports } = loadClient()
+  const calls = []
+  let section
+
+  const locale = { register() { return () => {} }, getSnapshot() { return { active: 'en' } } }
+  const slots = {
+    inject(_name, register) { register() },
+    register(options, component) {
+      if (options.name === 'settings.section') section = component
+      return () => {}
+    },
+  }
+  const ctx = strictCordisContext({
+    locale,
+    slots,
+    workspaces: { unarchiveSession(id) { calls.push(id); return Promise.resolve() } },
+  })
+  exports.apply(ctx)
+
+  assert.equal(typeof section, 'function', 'the settings section registers')
+
+  const summary = { displayTitle: 'Greeting', updatedAt: 1, cwd: 'C:/p' }
+  const tree = section({
+    useSessions: (selector) => selector({ ids: ['s1'], byId: { s1: summary }, phase: 'ready' }),
+    useWorkspaces: (selector) => selector({ archivedSessionIds: ['s1'], phase: 'ready' }),
+    t: (key) => key,
+  })
+
+  let button
+  ;(function find(node) {
+    if (node === null || typeof node !== 'object') return
+    if (Array.isArray(node)) { node.forEach(find); return }
+    const kids = node.children ?? []
+    if (kids.includes('unarchive') && node.props?.onClick) { button = node; return }
+    kids.forEach(find)
+    if (node.props) (node.props.children ?? []).forEach(find)
+  })(tree)
+
+  assert.ok(button, 'the row renders an unarchive action')
+  button.props.onClick({ preventDefault() {}, stopPropagation() {} })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  assert.deepEqual(calls, ['s1'], 'the click unarchives through ctx.get("workspaces")')
 })
