@@ -17,22 +17,42 @@ async function exists(path) {
   }
 }
 
-function request(body, method = 'POST') {
+/**
+ * One request shaped like the browser's own `fetch`.
+ *
+ * `Sec-Fetch-Site` is what a same-origin fetch from the app actually carries;
+ * `Referer` is routinely absent (`no-referrer` policy, a `file:` page), which is
+ * exactly the case that used to be rejected as `untrusted request`.
+ * @param body - JSON payload, when the route takes one.
+ * @param method - HTTP method.
+ * @param headers - extra or overriding headers for the trust tests.
+ * @returns a readable stand-in for the Node request.
+ */
+function request(body, method = 'POST', headers = {}) {
   const chunks = body === undefined ? [] : [Buffer.from(JSON.stringify(body))]
   const req = Readable.from(chunks)
   req.method = method
-  req.headers = { host: 'localhost:3000', referer: 'http://localhost:3000/settings' }
+  req.headers = {
+    host: 'localhost:3000',
+    'sec-fetch-site': 'same-origin',
+    ...headers,
+  }
+  // `undefined` in the overrides means "this client sends no such header",
+  // which is how the Origin-only and header-less cases are expressed.
+  for (const key of Object.keys(req.headers)) {
+    if (req.headers[key] === undefined) delete req.headers[key]
+  }
   return req
 }
 
-async function invoke(handler, body, method = 'POST') {
+async function invoke(handler, body, method = 'POST', headers = {}) {
   let status
   let raw = ''
   const res = {
     writeHead(value) { status = value },
     end(value) { raw = String(value ?? '') },
   }
-  await handler(request(body, method), res)
+  await handler(request(body, method, headers), res)
   return { status, body: JSON.parse(raw) }
 }
 
@@ -169,6 +189,69 @@ async function fixture(t, options = {}) {
 // `remote.workspace.unarchiveSession` and then this plugin's
 // `/archived/clear-pending` for the marker it owns. The tests below cover the
 // half that is still this plugin's: the marker bookkeeping.
+
+test('a same-origin fetch without a Referer is accepted', async (t) => {
+  // The real browser case that used to fail: `fetch` from the app carries
+  // Sec-Fetch-Site: same-origin and usually no Referer at all.
+  const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'] })
+  const response = await invoke(
+    app.routes.get('/archived/clear-pending'),
+    { sessionId: 'session-1' },
+    'POST',
+    { 'sec-fetch-site': 'same-origin' },
+  )
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { cleared: true })
+})
+
+test('a request with no fetch metadata and no Origin is accepted', async (t) => {
+  // A local tool or an older client: nothing here proves a cross-site origin.
+  const app = await fixture(t)
+  const response = await invoke(app.routes.get('/archived/delete'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 200)
+  assert.equal(response.body.deleted, 1)
+})
+
+test('a cross-site request is refused', async (t) => {
+  const app = await fixture(t)
+  const response = await invoke(
+    app.routes.get('/archived/delete'),
+    { sessionId: 'session-1' },
+    'POST',
+    { 'sec-fetch-site': 'cross-site' },
+  )
+
+  assert.equal(response.status, 403)
+  assert.equal(response.body.error, 'untrusted request')
+  assert.equal(await exists(app.directories.get('session-1')), true)
+})
+
+test('a foreign Origin is refused when no fetch metadata is sent', async (t) => {
+  const app = await fixture(t)
+  const response = await invoke(
+    app.routes.get('/archived/delete'),
+    { sessionId: 'session-1' },
+    'POST',
+    { 'sec-fetch-site': undefined, origin: 'https://evil.example' },
+  )
+
+  assert.equal(response.status, 403)
+  assert.equal(await exists(app.directories.get('session-1')), true)
+})
+
+test('a matching Origin is accepted when no fetch metadata is sent', async (t) => {
+  const app = await fixture(t)
+  const response = await invoke(
+    app.routes.get('/archived/delete'),
+    { sessionId: 'session-1' },
+    'POST',
+    { 'sec-fetch-site': undefined, origin: 'http://localhost:3000' },
+  )
+
+  assert.equal(response.status, 200)
+})
 
 test('clear-pending removes the marker without touching the archive set', async (t) => {
   const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'] })
