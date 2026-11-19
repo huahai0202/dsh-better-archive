@@ -36,6 +36,36 @@ const VERIFIED_GLYPHS = new Set([
   'IconTrashOutlineRegular',
 ])
 
+/**
+ * The Cordis context proxy a client stack actually hands to `apply()`.
+ *
+ * This is the rule that broke the release: reading a service property the
+ * fiber did not declare in `inject` throws `cannot get property "x" without
+ * inject` (see `ReflectService.handler` in @deepseek-ai/cordis). `get()` answers
+ * undefined instead. A stub that answers undefined for both would pass a
+ * `ctx.get(x) || ctx.x` fallback that dies in the real browser, so every
+ * behavioral test below runs against this strict shape.
+ * @param {Record<string, unknown>} services - the faces this test publishes.
+ * @returns a proxy mimicking the real access rules.
+ */
+function strictCordisContext(services) {
+  // `get` and `effect` are real context methods (they live on the prototype in
+  // the real object, so `Reflect.has` finds them); only service names are
+  // guarded by the inject rule.
+  const target = {
+    effect(callback) { return callback() },
+    get(name) { return services[name] },
+  }
+  return new Proxy(target, {
+    get(object, property) {
+      if (property in object) return object[property]
+      if (typeof property === 'symbol') return undefined
+      throw new Error(`cannot get property "${String(property)}" without inject`)
+    },
+    has(object, property) { return property in object },
+  })
+}
+
 /** Load the bundle factory under a browser-shaped stub and return its exports. */
 function loadClient() {
   let definition
@@ -107,17 +137,14 @@ test('apply registers the DSH surfaces the 0.2.2 contracts require', () => {
       return () => {}
     },
   }
-  const ctx = {
-    get(name) {
-      if (name === 'locale') return locale
-      if (name === 'slots') return slots
-      return undefined
-    },
-    effect(callback) { return callback() },
+  const services = {
+    locale,
+    slots,
     sidebarRightTabs: { register(definition) { tabs.push(definition); return () => {} } },
     sidebarRight: { openTab() {} },
     uiWorkspace: { openSession() {}, startSession() {} },
   }
+  const ctx = strictCordisContext(services)
 
   exports.apply(ctx)
 
@@ -146,7 +173,36 @@ test('apply registers the DSH surfaces the 0.2.2 contracts require', () => {
   assert.equal(byName.get('sidebar.right.pane.tab.title').key, definition.id)
 })
 
-test('a late right-sidebar face still yields the type, and the settings section registers either way', async () => {
+test('apply survives the sidebar faces being absent, and reads no undeclared property', () => {
+  // The exact failure this guards: `ctx.get(x) || ctx.x` looks harmless but the
+  // property read throws under Cordis for a service the fiber did not inject,
+  // which killed apply() outright — the Settings section disappeared with it.
+  const { exports } = loadClient()
+
+  const slotRegistrations = []
+  const locale = {
+    register() { return () => {} },
+    getSnapshot() { return { active: 'en' } },
+  }
+  const slots = {
+    inject(_name, register) { register() },
+    register(options) {
+      slotRegistrations.push(options)
+      return () => {}
+    },
+  }
+  // Neither sidebarRightTabs nor uiWorkspace is published yet.
+  const ctx = strictCordisContext({ locale, slots })
+
+  assert.doesNotThrow(() => exports.apply(ctx), 'a missing sidebar face must not fail activation')
+
+  // The Settings section needs no sidebar face, so it must still be there.
+  const names = slotRegistrations.map((options) => options.name)
+  assert.ok(names.includes('settings.section'), 'the settings section registers without any sidebar face')
+  assert.ok(names.includes('shell.overlay'), 'the toast host registers without any sidebar face')
+})
+
+test('a late right-sidebar face still yields the type, and the settings section registers either way', () => {
   const { exports } = loadClient()
 
   const slotRegistrations = []
@@ -166,20 +222,14 @@ test('a late right-sidebar face still yields the type, and the settings section 
   // after it finds the face — the activation-order race dsh 0.2.2 does not
   // sequence for a dsh.client.inject row.
   let calls = 0
-  const ctx = {
-    get(name) {
-      if (name === 'locale') return locale
-      if (name === 'slots') return slots
-      return undefined
-    },
-    effect(callback) { return callback() },
+  const ctx = strictCordisContext({
+    locale,
+    slots,
     get sidebarRightTabs() {
       calls += 1
       return calls === 1 ? undefined : { register(definition) { tabs.push(definition); return () => {} } }
     },
-    sidebarRight: { openTab() {} },
-    uiWorkspace: { openSession() {}, startSession() {} },
-  }
+  })
 
   exports.apply(ctx)
 
