@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Better archive",
-    "description": "A right-sidebar Archived page and a Settings → Plugins section that list archived chats by project, search and filter them, unarchive one or many, and permanently delete them behind a confirmation; archiving any chat raises an undoable toast with View and Undo.",
+    "description": "A right-sidebar Archived page and a Settings → Plugins section that list archived chats by project, search and filter them, unarchive one or many, and permanently delete them behind a confirmation. It adds no toast of its own: DSH already raises one on archive, with undo and a filter action.",
     "detail": "docs/DETAIL.md"
   }
 }

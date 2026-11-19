@@ -188,9 +188,6 @@ function preview(lang) {
         when3: '上周',
         unarchive: '取消归档',
         delete: '删除',
-        toast: '已归档「修复」',
-        view: '查看',
-        undo: '撤销',
         count: '2 个聊天',
         count1: '1 个聊天',
         selected: '已选择 2 项',
@@ -213,47 +210,22 @@ function preview(lang) {
         when3: 'Last week',
         unarchive: 'Unarchive',
         delete: 'Delete',
-        toast: 'Archived "Fix session cookie timeout"',
-        view: 'View',
-        undo: 'Undo',
         count: '2 chats',
         count1: '1 chat',
         selected: '2 selected',
       }
 
   const parts = []
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300" role="img" aria-label="${lang === 'zh' ? '右侧栏的已归档页面、设置区的已归档一节，以及归档提示条' : 'The Archived page in the right sidebar, the Archived settings section, and the archive toast'}">`)
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300" role="img" aria-label="${lang === 'zh' ? '右侧栏的「已归档」页面与「已归档的聊天」设置一节' : 'The Archived page in the right sidebar beside the Archived chats settings section'}">`)
   parts.push(`<rect width="640" height="300" fill="${C.canvas}"/>`)
 
   // Everything is measured, so a label can be right-aligned and checked
   // against its container while drawing instead of being nudged by hand.
   const right = (value, size, edge) => edge - measure(font, value, size)
 
-  // --- toast: the bar that appears when a chat is archived -------------------
-  // Centred, 380 wide like the real bar, with its two pill actions.
-  const toastW = 380
-  const toastX = (640 - toastW) / 2
-  const toastY = 14
-  const toastH = 40
-  const undoW = measure(font, copy.undo, 11.5) + 22
-  const viewW = measure(font, copy.view, 11.5) + 22
-  parts.push(rect(toastX, toastY, toastW, toastH, 13, C.surface, C.border))
-  parts.push(archiveRestoreGlyph(toastX + 14, toastY + 12, 1.15, C.muted))
-  const toastTextX = toastX + 36
-  const toastTextMax = toastW - 36 - viewW - undoW - 26
-  let toastText = copy.toast
-  while (measure(font, toastText, 12) > toastTextMax && toastText.length > 1) {
-    toastText = `${toastText.slice(0, -2)}…`
-  }
-  parts.push(t(toastText, toastTextX, toastY + 25, 12, C.text))
-  const undoX = toastX + toastW - 12 - undoW
-  const viewX = undoX - 6 - viewW
-  parts.push(rect(viewX, toastY + 8, viewW, 24, 8, C.surfaceAlt))
-  parts.push(t(copy.view, viewX + 11, toastY + 24, 11.5, C.text))
-  parts.push(rect(undoX, toastY + 8, undoW, 24, 8, C.text))
-  parts.push(t(copy.undo, undoX + 11, toastY + 24, 11.5, C.surface))
-
-  const paneY = 70
+  // No archive toast in this drawing: DSH raises its own on archive, and this
+  // plugin no longer adds a second one.
+  const paneY = 62
   const paneH = 214
 
   // --- right sidebar pane ----------------------------------------------------

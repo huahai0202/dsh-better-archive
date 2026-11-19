@@ -165,7 +165,7 @@ test('apply registers the DSH surfaces the 0.2.2 contracts require', () => {
   const byName = new Map(slotRegistrations.map((options) => [options.name, options]))
   assert.deepEqual(
     [...byName.keys()].sort(),
-    ['settings.section', 'shell.overlay', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title'],
+    ['settings.section', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title'],
   )
   // The keyed seats dispatch by the type id, so both bodies must sit in the
   // cell named after the very definition registered above.
@@ -199,7 +199,6 @@ test('apply survives the sidebar faces being absent, and reads no undeclared pro
   // The Settings section needs no sidebar face, so it must still be there.
   const names = slotRegistrations.map((options) => options.name)
   assert.ok(names.includes('settings.section'), 'the settings section registers without any sidebar face')
-  assert.ok(names.includes('shell.overlay'), 'the toast host registers without any sidebar face')
 })
 
 test('a late right-sidebar face still yields the type, and the settings section registers either way', () => {
@@ -236,7 +235,37 @@ test('a late right-sidebar face still yields the type, and the settings section 
   assert.equal(tabs.length, 1, 'the type registers on the retry, not never')
   assert.equal(tabs[0].kind, 'archive')
   const names = slotRegistrations.map((options) => options.name).sort()
-  assert.deepEqual(names, ['settings.section', 'shell.overlay', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title'])
+  assert.deepEqual(names, ['settings.section', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title'])
+})
+
+test('the plugin adds no archive toast of its own', () => {
+  // dsh 0.2.2 raises its own `workspace.toast` on archive ("Archived … undo"),
+  // so a second bar from this plugin is pure duplication. Assert both halves:
+  // no overlay slot registration, and no toast copy/components left in source.
+  const { exports } = loadClient()
+
+  const slotRegistrations = []
+  const locale = {
+    register() { return () => {} },
+    getSnapshot() { return { active: 'en' } },
+  }
+  const slots = {
+    inject(_name, register) { register() },
+    register(options) {
+      slotRegistrations.push(options)
+      return () => {}
+    },
+  }
+  exports.apply(strictCordisContext({ locale, slots }))
+
+  assert.equal(
+    slotRegistrations.filter((options) => options.name === 'shell.overlay').length,
+    0,
+    'nothing registers into shell.overlay',
+  )
+  for (const marker of ['ArchiveToastHost', 'ArchivedToastItem', 'toastArchived', '_dsh_ba_toast']) {
+    assert.ok(!source.includes(marker), `${marker} should be gone from the client bundle`)
+  }
 })
 
 test('every product glyph the client draws is a 0.2.2 export name', () => {

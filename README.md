@@ -2,15 +2,15 @@
 
 > 为 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) Web GUI 提供完整、可管理的已归档会话视图。
 
-`dsh-better-archive` 在 DSH 的设置区域和会话区右侧的 Sidebar 各提供一个「已归档」入口（右侧是 `archive` 页面类型，从引导页的入口胶囊打开）。归档会话时右上角会弹出可撤销的提示条。你可以查找和筛选归档会话、恢复会话，或按需永久删除不再需要的归档记录。
+`dsh-better-archive` 在 DSH 的设置区域和会话区右侧的 Sidebar 各提供一个「已归档」入口（右侧是 `archive` 页面类型，从引导页的入口胶囊打开）。你可以查找和筛选归档会话、恢复会话，或按需永久删除不再需要的归档记录。归档时不再另弹提示条 —— DSH 自带的归档提示条已经提供「撤销」与「筛选已归档会话」。
 
 ## 界面
 
 浅色主题下的示意图（插件页的详细介绍用的就是这张图，中英文各一份）：
 
-![右侧栏的「已归档」页面与设置区的「已归档的聊天」一节，上方是归档提示条](./docs/preview.svg)
+![右侧栏的「已归档」页面与设置区的「已归档的聊天」一节](./docs/preview.svg)
 
-早期的深色截图放在 `assets/` 里（Left top: right-Sidebar「已归档」tab、设置区「已归档」一节、引导页入口胶囊、归档提示条）：
+早期的深色截图放在 `assets/` 里（Right top: right-Sidebar「已归档」tab、设置区「已归档」一节、引导页入口胶囊、0.10.2 之前自带的归档提示条）：
 
 | 右侧 Sidebar「已归档」 | 设置区「已归档」 |
 | :---: | :---: |
@@ -22,7 +22,7 @@
 
 - 在 DSH 设置区提供独立的「已归档」页面。
 - 在会话区右侧的 Sidebar 提供一个「已归档」页面 tab：以 `sidebar://archive` 页面类型（kind `archive`）注册，引导页的入口胶囊打开它，chip 带归档图标，正文在面板窄列里沿用同一套搜索 / 筛选 / 排序 / 删除界面。0.7.0 曾引入的左侧一级页面与侧边导航行已在 0.8.1 移除，设置区与右侧栏是仅有的两个入口。
-- 归档会话时右上角弹出提示条，带「查看」（直达右侧 Sidebar 的「已归档」tab）、「撤销」（取消归档）与「关闭」。右侧栏是每会话一份的面，所以当前没有打开的会话时，「查看」会先打开最近的一个会话（一个都没有时由 DSH 新开一个空会话）再打开该 tab。悬停不自动消失。
+- 归档本身不弹提示条：DSH 0.2.2 自己就会在归档时弹出 `workspace.toast`（带「撤销」和「筛选已归档会话」），插件不再叠加第二个。
 - 按项目查看归档会话；支持关键词搜索、项目筛选，以及按更新时间或名称排序。
 - 一键取消归档。归档集合经由 workspace 快照推送，恢复的会话自动回到会话列表（0.8.3 起不再整表刷新，无列表重排闪动）。
 - 支持删除单个会话、某个项目下的全部归档会话，或清空全部归档会话；仍在使用的会话会在重启 DSH 后自动删除。永久删除走 DSH 自己的风险确认：需要先勾选「我已了解」才能按下确认按钮。
@@ -41,11 +41,10 @@
 | 排序 / 项目筛选下拉的触发器 | `Button`（`ghost` 形状）+ DSH 设置页选择器同款底色 `--dsw-alias-bg-module-platform` |
 | 永久删除确认（单个 / 整个项目 / 全部） | `RiskConfirmation`（基于 `Modal`，自带警告图标、勾选确认与「确认按钮在勾选前保持禁用」的门禁） |
 | 全部删除、取消归档、图标按钮 | `Button`（`outline` / `ghost` 变体与 `sm` / `md` 尺寸） |
-| 归档提示条 | 自建外壳（DSH 的 `Toast` 只支持文字+图标，没有按钮位），取 DSH 的菜单表面、elevation 与「solid」反色药丸配方；内含 `IconArchiveOutlineRegular` 与 `Button` |
 | 右侧 Sidebar「已归档」tab | `ctx.sidebarRightTabs` 注册页面类型（kind `archive`，引导页入口胶囊）+ keyed `sidebar.right.pane.tab` 正文与 `sidebar.right.pane.tab.title` chip 图标；正文接收框架注入的 `useSessions` / `useWorkspaces`，按面板窄列自适应布局；提示条「查看」经 `ctx.sidebarRight.openTab('archive')` 打开它。该列每会话一份，因此主视图没有会话时「查看」先经 `ctx.uiWorkspace.openSession` 打开最近的非归档会话（一个都没有时 `startSession` 新开一个空会话），再等 seat 挂载后打开 tab；是否有会话打开读会话摘要的 `retainedBy.mainView`（会话列表快照本身没有 current 字段） |
 | 图标 | `IconArchiveOutlineRegular`、`IconTrashOutlineRegular`、`IconSearchOutlineRegular`、`IconChevronDownOutlineRegular`、`IconEllipsisOutlineRegular`、`IconFolderOpenRegular`、`IconCloseOutlineRegular`（dsh 0.1.7 的尺寸中性权重名，`Regular` 为 1px 描边） |
 
-`@deepseek-ai/dsh-client-ui-primitives` 是 DSH 内核在启动时注入浏览器模块表的基础模块，因此无需在 `dsh.client.external` 中声明。插件自己的样式只剩下组件无法表达的布局、下拉底色、归档提示条外壳、一个破坏性强调色和滚动条皮肤。
+`@deepseek-ai/dsh-client-ui-primitives` 是 DSH 内核在启动时注入浏览器模块表的基础模块，因此无需在 `dsh.client.external` 中声明。插件自己的样式只剩下组件无法表达的布局、下拉底色、一个破坏性强调色和滚动条皮肤。
 
 > 不要用 `Button` 的 `toolbar` 变体做普通控件：它画的是 `--dsw-alias-button-tool-bar-fill`，这个令牌在 DSH 自带主题和第三方主题里都是同一个固定的半透明深灰（`rgba(84,85,87,0.5)`），叠在任何浅色底上都会变成中灰药丸。它只适合压在深色浮层上的工具栏。
 
@@ -58,6 +57,8 @@ dsh plugin --profile web add github:huahai0202/dsh-better-archive
 ```
 
 安装完成后重启 `dsh web`。插件会自动加入该 profile 的 `dsh.profile.bundles`；若未自动加入，请在该数组中添加 `"dsh-better-archive"`，然后重启 DSH Web。
+
+> 0.10.2 移除插件自带的归档提示条。DSH 0.2.2 在归档时自己就会弹出 `workspace.toast`（带「撤销」与「筛选已归档会话」），两个条一起出现是重复的，所以整块删掉：`ArchivedToastItem` / `ArchiveToastHost`、它注册的那条 `shell.overlay` 槽位、仅供它使用的 12 条 CSS、`toastArchived` / `toastView` / `toastUndo` / `toastUndoFailed` 四个文案键，以及随之失效的 `openArchivedView` / `revealArchiveTab` / `mainViewSessionId` / `mostRecentSessionId`。归档提示条上的「查看」入口因此消失 —— 右侧栏「已归档」tab 仍在引导页入口胶囊与 tab 栏里可打开。插件页说明与 `docs/preview*.svg` 也去掉了提示条，只画两个管理界面。测试新增一条断言：`shell.overlay` 不得被注册，源码里不得再出现提示条相关符号。
 
 > 0.10.1 修复 0.10.0 引入的激活崩溃：插件在浏览器里报 `cannot get property "sidebarRight" without inject`，结果整个客户端 `apply` 当场失败——设置区那一节也一起消失，看起来像「没生效」。原因是 Cordis 的上下文代理对**未在 `inject` 里声明**的服务属性访问会直接抛异常（`ctx.get(x)` 才返回 `undefined`），而 0.10.0 写的 `ctx.get(x) || ctx.x` 回退恰好会在 `get` 落空时读到那个属性。现在所有服务一律只用 `ctx.get(...)` 读取；缺失的右侧栏服务只让对应入口降级，不再影响设置区。测试也改成在会抛异常的严格上下文下运行，并新增一条回归用例（把旧写法改回去会立刻失败）。
 
@@ -186,7 +187,7 @@ DSH 的内容寻址附件由 DSH 独立管理，因此不会随会话记录一�
 dsh-better-archive/
 ├── lib/
 │   ├── index.js            # DSH Host 路由与会话操作
-│   └── client.js           # 归档界面（设置区 + 右侧 Sidebar）与归档提示条
+│   └── client.js           # 归档界面（设置区 + 右侧 Sidebar）
 ├── test/
 │   ├── index.test.js       # Host 路由与会话操作测试
 │   └── client.test.js      # 浏览器半的求值、helper 与契约守卫
