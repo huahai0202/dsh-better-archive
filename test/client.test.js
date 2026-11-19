@@ -192,12 +192,14 @@ test('apply registers the DSH surfaces the 0.2.2 contracts require', () => {
   const byName = new Map(slotRegistrations.map((options) => [options.name, options]))
   assert.deepEqual(
     [...byName.keys()].sort(),
-    ['settings.section', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title'],
+    ['plugins.bundle.config', 'settings.section', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title'],
   )
   // The keyed seats dispatch by the type id, so both bodies must sit in the
   // cell named after the very definition registered above.
   assert.equal(byName.get('sidebar.right.pane.tab').key, definition.id)
   assert.equal(byName.get('sidebar.right.pane.tab.title').key, definition.id)
+  // The plugin detail page's card is keyed by the package name.
+  assert.equal(byName.get('plugins.bundle.config').key, 'dsh-better-archive')
 })
 
 test('apply survives the sidebar faces being absent, and reads no undeclared property', () => {
@@ -228,7 +230,7 @@ test('apply survives the sidebar faces being absent, and reads no undeclared pro
   assert.ok(names.includes('settings.section'), 'the settings section registers without any sidebar face')
 })
 
-test('a late right-sidebar face still yields the type, and the settings section registers either way', () => {
+test('a missing right-sidebar face leaves the other surfaces registered', () => {
   const { exports } = loadClient()
 
   const slotRegistrations = []
@@ -244,25 +246,20 @@ test('a late right-sidebar face still yields the type, and the settings section 
       return () => {}
     },
   }
-  // First read of the registry misses (the provider runs later), every read
-  // after it finds the face — the activation-order race dsh 0.2.2 does not
-  // sequence for a dsh.client.inject row.
-  let calls = 0
-  const ctx = strictCordisContext({
-    locale,
-    slots,
-    get sidebarRightTabs() {
-      calls += 1
-      return calls === 1 ? undefined : { register(definition) { tabs.push(definition); return () => {} } }
-    },
-  })
+  // The right-Sidebar feature has not published its registry: the tab type
+  // cannot register, but everything else must.
+  const ctx = strictCordisContext({ locale, slots })
 
-  exports.apply(ctx)
+  assert.doesNotThrow(() => exports.apply(ctx), 'a missing sidebar face must not fail activation')
 
-  assert.equal(tabs.length, 1, 'the type registers on the retry, not never')
-  assert.equal(tabs[0].kind, 'archive')
+  assert.equal(tabs.length, 0, 'no type without the registry')
   const names = slotRegistrations.map((options) => options.name).sort()
-  assert.deepEqual(names, ['settings.section', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title'])
+  assert.deepEqual(names, [
+    'plugins.bundle.config',
+    'settings.section',
+    'sidebar.right.pane.tab',
+    'sidebar.right.pane.tab.title',
+  ])
 })
 
 test('the plugin adds no archive toast of its own', () => {
@@ -590,4 +587,70 @@ test('an unready workspaces service is reported instead of silently doing nothin
 
   assert.equal(button.length, 1, 'the row action still renders without the service')
   assert.doesNotThrow(() => button[0]({ preventDefault() {}, stopPropagation() {} }))
+})
+
+test('the entry settings card toggles a surface off and on without a reload', async () => {
+  const registry = new Map()
+  const registrations = []
+  const live = new Set()
+  const bookkeeping = { state: {}, slot: undefined }
+  let cursor = 0
+  bookkeeping.slot = () => cursor++
+  const { exports } = loadClient({ bookkeeping })
+
+  const locale = { register() { return () => {} }, getSnapshot() { return { active: 'en' } } }
+  const slots = {
+    inject(_name, register) { register() },
+    register(options, component) {
+      // The real registry returns a disposer; model its effect by tracking liveness.
+      const entry = { options, component, live: true }
+      registrations.push(entry)
+      live.add(entry)
+      const key = options.key === undefined ? options.name : `${options.name}:${options.key}`
+      if (entry.live) registry.set(key, component)
+      return () => {
+        entry.live = false
+        live.delete(entry)
+        if (registry.get(key) === component) registry.delete(key)
+      }
+    },
+  }
+  // A Host stub that remembers what it was told, like the real route does.
+  let stored = { sidebarEntry: true, settingsEntry: true }
+  globalThis.fetch = (url, init) => {
+    if (String(url).includes('/archived/entries')) {
+      if (init?.method === 'POST') stored = JSON.parse(init.body)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(stored) })
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ pending: [] }) })
+  }
+
+  exports.apply(strictCordisContext({ locale, slots, effect: (f) => f() }))
+
+  assert.ok(registry.has('settings.section'), 'the settings section starts registered')
+  assert.ok(registry.has('sidebar.right.pane.tab:dsh-better-archive'), 'the sidebar body starts registered')
+
+  // Render the card and turn the sidebar entry off.
+  const card = registry.get('plugins.bundle.config:dsh-better-archive')
+  assert.equal(typeof card, 'function', 'the settings card registers under the package name')
+  const tree = card({})
+  const switches = []
+  ;(function walk(node) {
+    if (node === null || typeof node !== 'object') return
+    if (Array.isArray(node)) { node.forEach(walk); return }
+    if (node.type === 'input' && node.props?.type === 'checkbox') switches.push(node.props)
+    ;(node.children ?? []).forEach(walk)
+    if (node.props?.children) node.props.children.forEach(walk)
+  })(tree)
+  assert.equal(switches.length, 2, 'one switch per entry point')
+
+  switches[0].onChange({ target: { checked: false } })
+  await new Promise((resolve) => setTimeout(resolve, 60))
+
+  assert.equal(registry.has('sidebar.right.pane.tab:dsh-better-archive'), false, 'the sidebar body is withdrawn')
+  assert.ok(registry.has('settings.section'), 'the settings section stays')
+
+  switches[0].onChange({ target: { checked: true } })
+  await new Promise((resolve) => setTimeout(resolve, 60))
+  assert.ok(registry.has('sidebar.right.pane.tab:dsh-better-archive'), 'turning it back on re-registers the body')
 })
