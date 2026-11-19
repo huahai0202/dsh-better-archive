@@ -6,7 +6,11 @@
 
 ## 界面
 
-全部为深色模式。左上起：右侧 Sidebar 的「已归档」tab、设置区的「已归档」一节、右侧 Sidebar 的引导页（入口胶囊）、归档提示条。
+浅色主题下的示意图（插件页的详细介绍用的就是这张图，中英文各一份）：
+
+![右侧栏的「已归档」页面与设置区的「已归档的聊天」一节，上方是归档提示条](./docs/preview.svg)
+
+早期的深色截图放在 `assets/` 里（Left top: right-Sidebar「已归档」tab、设置区「已归档」一节、引导页入口胶囊、归档提示条）：
 
 | 右侧 Sidebar「已归档」 | 设置区「已归档」 |
 | :---: | :---: |
@@ -47,13 +51,15 @@
 
 ## 安装
 
-需要 dsh 0.1.7-alpha.2+、Node.js 22.19+ 和 pnpm（0.9.3 起不再适配更早的 dsh 版本；图标、引导页条目契约与 peerDependencies 均按 0.1.7 的浏览器模块表校准）。
+需要 dsh 0.2.2-rc.1+、Node.js 24.9+ 和 pnpm（`engines` 声明为 `dsh >=0.2.2-rc.1 <0.3.0-0`、`node >=24.9.0`；0.10.0 起按 0.2.2 的会话持久化快照、原生 `unarchiveSession`、右侧栏与设置区契约校准，不再适配更早的 dsh 版本）。
 
 ```sh
 dsh plugin --profile web add github:huahai0202/dsh-better-archive
 ```
 
 安装完成后重启 `dsh web`。插件会自动加入该 profile 的 `dsh.profile.bundles`；若未自动加入，请在该数组中添加 `"dsh-better-archive"`，然后重启 DSH Web。
+
+> 0.10.0 适配 dsh 0.2.2-rc.5。① **取消归档改走 DSH 自己的公开 API**：0.2.2 新增了 `workspaceRegistry.unarchiveSession(id)`，同时触发 `workspace/session-unarchiving` 钩子——worktree 之类在归档时留下后续工作的提供方靠它回收。单条取消归档现在优先走这条路径（写标记 → 调 `unarchiveSession` → 失败时把标记写回）；批量取消归档仍是一次 `setState`，因为公开 API 没有批量版本，但两条路径共用同一段标记回滚逻辑。② **会话产物位置改读快照**：0.2.2 的 `sessionPersistence.stat(id)` / `list()` 快照自带 `location: { kind: 'jsonl', path }`，插件改为优先用它，`locate(header)` 退为兜底——这是「尚未落盘的活动会话」和旧后端唯一还能算出目录的方式。③ **右侧栏不再拖累整体激活**：`sidebarRightTabs` 与 `sidebarRight` 由右侧栏特性在自己的 apply 里提供，而 `dsh.client.inject` 不参与 Cordis 的激活等待，包之间的激活顺序也没有保证——此前把这两个服务写进插件 `inject` 时，本插件先激活就会整块不挂载（连设置区那一节一起消失）。现在 `exports.inject` 只留 `slots` 与 `locale`，tab 类型等服务出现后注册（约 5 秒有界重试，随插件 fiber 清理），服务始终缺席时只记一条警告，设置区照常可用。④ **元数据与插图**：新增 `locale/en.json`、`locale/zh.json` 的 `meta.title` / `meta.description` / `meta.detail`，插件页现在显示标题、说明与 `docs/preview.svg`（中文 `docs/preview.zh.svg`）——图里的文字全部是轮廓路径，不含 `<text>`/`<style>`/脚本，由 `scripts/make-previews.mjs` 用系统字体生成。⑤ 新增 `icon.svg`（36×36，与相邻插件同一套圆角瓦片 + 蓝色渐变），`files` 同步加入 `locale`、`docs` 与 `icon.svg`。
 
 > 0.8.8 提示条「查看」不再时有时无：此前它用会话列表快照的 `list.current` 判断有没有会话打开，而该快照根本没有这个字段——判断恒为 false，「查看」实际从未渲染。现在改读会话摘要的 `retainedBy.mainView`（DSH 设置外壳判断「是否打开着会话」用的同一个信号）。「查看」同时改为始终可用：右侧栏是每会话一份的面，主视图没有会话时先打开最近的非归档会话（按 `updatedAt`，优先非空会话；一个都没有时由 `startSession` 新开一个空会话），再等该会话的 seat 挂载后打开 tab——`openTab` 在 seat 未挂载时会抛错，所以这一段按 100ms × 50 次重试，超时只记一条警告。
 >
@@ -134,7 +140,7 @@ npm pack --dry-run
 
 ## 删除行为
 
-永久删除只作用于已归档会话，操作前会要求确认。针对 DSH 0.1.5-rc.2+ 的默认 JSONL 会话存储（冷读走 `stat(id)`，列表走快照形 `list()`），插件会删除会话专属目录，同步移除对应的工作区与归档记账，并把这次消失通知给所有已连接的浏览器。
+永久删除只作用于已归档会话，操作前会要求确认。针对 DSH 0.2.2+ 的默认 JSONL 会话存储（冷读走 `stat(id)`，列表走快照形 `list()`，两者都带 `location: { kind: 'jsonl', path }`），插件会删除会话专属目录，同步移除对应的工作区与归档记账，并把这次消失通知给所有已连接的浏览器。`locate(header)` 仅作为快照没有 `location` 时的兜底（例如尚未落盘的活动会话）。
 
 DSH 的归档操作只会将会话从常规列表中隐藏，并不等于终止会话。删除行为取决于会话当前是否仍由 DSH 进程持有：
 
@@ -177,13 +183,25 @@ DSH 的内容寻址附件由 DSH 独立管理，因此不会随会话记录一�
 ```text
 dsh-better-archive/
 ├── lib/
-│   ├── index.js        # DSH Host 路由与会话操作
-│   └── client.js       # 归档界面（设置区 + 右侧 Sidebar）与归档提示条
+│   ├── index.js            # DSH Host 路由与会话操作
+│   └── client.js           # 归档界面（设置区 + 右侧 Sidebar）与归档提示条
 ├── test/
-│   └── index.test.js   # Host 路由与会话操作测试
-├── cordis.patch.yml    # Host 挂载配置
-├── package.json        # 插件声明
-└── assets/             # README 截图
+│   ├── index.test.js       # Host 路由与会话操作测试
+│   └── client.test.js      # 浏览器半的求值、helper 与契约守卫
+├── locale/                 # 插件页的 meta.title / description / detail
+│   ├── en.json
+│   └── zh.json
+├── docs/                   # 插件页附图（纯路径，无 <text>）
+│   ├── DETAIL.md
+│   ├── DETAIL.zh.md
+│   ├── preview.svg
+│   └── preview.zh.svg
+├── scripts/
+│   └── make-previews.mjs   # 用系统字体把附图文字转成路径
+├── icon.svg                # 插件页图标（36×36）
+├── cordis.patch.yml        # Host 挂载配置
+├── package.json            # 插件声明
+└── assets/                 # 早期深色截图
 ```
 
 ## License

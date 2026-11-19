@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none" role="img" aria-label="Better archive">
+  <!-- Layout follows the neighbouring plugin artwork (dsh-rewind-plugin,
+       dsh-web-fetch-hub, and the product's own Subagent tile): a rounded tile
+       inset from the 36-unit canvas with a white round-capped glyph on top.
+       The tile carries the same vertical light-to-dark blue gradient the
+       product's plugin artwork uses (#69B9FF -> #324DE2), so this icon sits
+       beside the installed ones at row size.
+
+       The mark is an archive box with a restore arrow leaving it, which is what
+       this plugin adds to DSH's own archive glyph: archived chats come back
+       out. The arrow floats above the lid instead of crossing the body, so the
+       silhouette stays legible down to row size. Drawn on a 16-unit grid and
+       scaled 1.4x like the neighbouring icons, with a 1.5-unit stroke whose
+       ratio matches theirs. -->
+  <g transform="translate(18 18) scale(0.9286) translate(-18 -18)">
+    <rect x="4" y="4" width="28" height="28" rx="8" fill="url(#better_archive_blue)" />
+    <g transform="translate(7.4 7.4) scale(1.4)" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Restore arrow, entirely above the lid. -->
+      <path d="M8 2.4V6.2" />
+      <path d="M5.9 4.3 8 2.2l2.1 2.1" />
+      <!-- Archive lid. -->
+      <path d="M2.4 7.4h11.2" />
+      <!-- Box body hanging from the lid. -->
+      <path d="M3.6 7.4v3.2a2.2 2.2 0 0 0 2.2 2.2h4.4a2.2 2.2 0 0 0 2.2-2.2V7.4" />
+      <!-- Handle notch. -->
+      <path d="M6.7 10.2h2.6" />
+    </g>
+  </g>
+  <defs>
+    <linearGradient id="better_archive_blue" x1="18" y1="4" x2="18" y2="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#69B9FF" />
+      <stop offset="1" stop-color="#324DE2" />
+    </linearGradient>
+  </defs>
+</svg>

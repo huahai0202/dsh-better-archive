@@ -90,17 +90,41 @@ async function fixture(t, options = {}) {
       calls.push(['replaceHeaderIndex', headers.length])
       if (options.headerRefreshFailure) throw new Error('header refresh failed')
     },
+    // dsh 0.2.2 grew the public unarchive. Fixtures opt in so both the native
+    // path and the pre-0.2.2 direct-write path stay covered.
+    ...(options.nativeUnarchive === false
+      ? {}
+      : {
+          async unarchiveSession(id) {
+            calls.push(['unarchiveSession', id])
+            if (options.setStateFailure) throw new Error('setState failed')
+            state = {
+              ...state,
+              archivedSessionIds: state.archivedSessionIds.filter((sid) => String(sid) !== String(id)),
+            }
+          },
+        }),
     list() { return [workspace] },
   }
   // Every `stat` reads a stored header (a directory scan plus a decoded first
   // line in the real JSONL backend), so the fixture counts them.
   let headerReads = 0
+  // dsh 0.2.2 answers the JSONL artifact `location` on the stat snapshot itself;
+  // `snapshotLocation: false` models a backend/live session that only has the
+  // legacy `locate(header)` computation.
+  const snapshotLocation = options.snapshotLocation !== false
   const persistence = {
     async stat(id) {
       headerReads++
-      return broken.has(id) ? undefined : { header: { id, cwd } }
+      if (broken.has(id)) return undefined
+      const header = { id, cwd }
+      return snapshotLocation
+        ? { header, revision: 'r1', sizeBytes: 1, location: { kind: 'jsonl', path: join(directories.get(id), 'session.jsonl') } }
+        : { header, revision: 'r1', sizeBytes: 1 }
     },
-    locate(meta) { return { kind: 'jsonl', path: join(directories.get(meta.id), 'session.jsonl') } },
+    ...(options.locate === false
+      ? {}
+      : { locate(meta) { return { kind: 'jsonl', path: join(directories.get(meta.id), 'session.jsonl') } } }),
     async list() { return [] },
   }
   const routes = new Map()
@@ -141,14 +165,62 @@ async function fixture(t, options = {}) {
   }
 }
 
-test('unarchive uses the registry queue and updates its cached state', async (t) => {
+test('unarchive runs on the registry queue and removes the id from the archive set', async (t) => {
   const app = await fixture(t)
   const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
 
   assert.equal(response.status, 200)
   assert.deepEqual(response.body, { archived: [] })
   assert.deepEqual(app.state().archivedSessionIds, [])
+  // dsh 0.2.2's public unarchive is used when present, so the
+  // `workspace/session-unarchiving` providers stay in step.
+  assert.deepEqual(app.calls.slice(0, 2), [['enqueue'], ['unarchiveSession', 'session-1']])
+})
+
+test('unarchive falls back to a direct state write on a release without the public API', async (t) => {
+  const app = await fixture(t, { nativeUnarchive: false })
+  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { archived: [] })
+  assert.deepEqual(app.state().archivedSessionIds, [])
   assert.deepEqual(app.calls.slice(0, 2), [['enqueue'], ['setState', []]])
+})
+
+test('a failed native unarchive puts the pending marker back', async (t) => {
+  const app = await fixture(t, { pendingIds: ['session-1'], liveIds: ['session-1'], setStateFailure: true })
+  const marker = join(app.directories.get('session-1'), '.dsh-better-archive-delete-pending')
+  const response = await invoke(app.routes.get('/archived/unarchive'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 500)
+  assert.match(response.body.error, /setState failed/)
+  assert.equal(await exists(marker), true)
+  assert.deepEqual(app.state().archivedSessionIds, ['session-1'])
+})
+
+test('the artifact location comes from the stat snapshot when the backend reports one', async (t) => {
+  // dsh 0.2.2 stamps `location` on the snapshot; the fixture's legacy
+  // `locate(header)` is removed here so a snapshot-only backend must work.
+  const app = await fixture(t, { locate: false })
+  const response = await invoke(app.routes.get('/archived/pending'), undefined, 'GET')
+  const deleted = await invoke(app.routes.get('/archived/delete'), { sessionId: 'session-1' })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { pending: [] })
+  assert.equal(deleted.status, 200)
+  assert.deepEqual(deleted.body, { archived: [], deleted: 1, scheduled: [] })
+  assert.equal(await exists(app.directories.get('session-1')), false)
+})
+
+test('a backend that reports no artifact location leaves the entry unresolved', async (t) => {
+  // No snapshot location and no locator: the entry cannot be deleted, and the
+  // bulk path must report it instead of failing the whole request.
+  const app = await fixture(t, { locate: false, snapshotLocation: false, ids: ['session-1', 'session-2'] })
+  const response = await invoke(app.routes.get('/archived/delete-all'), { confirm: true })
+
+  assert.equal(response.status, 200)
+  assert.equal(response.body.deleted, 0)
+  assert.deepEqual(response.body.unresolved.map((entry) => entry.id).sort(), ['session-1', 'session-2'])
 })
 
 test('batch unarchive removes the listed ids in a single state write', async (t) => {

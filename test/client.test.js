@@ -17,13 +17,14 @@ const source = await readFile(join(import.meta.dirname, '..', 'lib', 'client.js'
 
 /**
  * The product glyphs the client draws, exactly the export names verified
- * against dsh 0.1.7-alpha.2's `@deepseek-ai/dsh-client-ui-primitives`.
+ * against dsh 0.2.2-rc.5's `@deepseek-ai/dsh-client-ui-primitives`.
  *
  * 0.1.7 replaced the artboard-size export suffixes with size-neutral weights
  * (`IconArchiveOutline20` → `IconArchiveOutlineRegular`/`Medium`, with `size`
  * deciding the rendered pixels). The old names are gone from the module table,
  * and `Icon` renders nothing for an unresolved name, so a stale spelling loses
- * the glyph silently — in the GUI only.
+ * the glyph silently — in the GUI only. Every name here was confirmed present
+ * in the shell's frozen module table for 0.2.2-rc.5.
  */
 const VERIFIED_GLYPHS = new Set([
   'IconArchiveOutlineRegular',
@@ -40,6 +41,8 @@ function loadClient() {
   let definition
   const windowStub = {
     __ModuleLoader__: { load(def) { definition = def } },
+    // The client schedules its bounded retries on the page's timer.
+    setTimeout(callback) { callback(); return 0 },
   }
   const requireStub = (name) => {
     if (name === 'react') {
@@ -68,6 +71,15 @@ test('client module factory evaluates under a stubbed browser environment', () =
   assert.equal(typeof exports.apply, 'function')
 })
 
+test('activation dependencies stay minimal so a late sidebar cannot block the plugin', () => {
+  const { exports } = loadClient()
+  // `sidebarRightTabs`, `sidebarRight` and `uiWorkspace` are provided inside
+  // other bundles' applies and dsh.client.inject adds no activation wait, so
+  // naming them here would keep the whole plugin (settings section included)
+  // inactive whenever one of them activates later.
+  assert.deepEqual([...exports.inject].sort(), ['locale', 'slots'])
+})
+
 test('every shared helper its call sites reference is defined', () => {
   for (const name of ['dropPendingDeleteId', 'applyPendingDeleteIds']) {
     const calls = source.match(new RegExp(`\\b${name}\\(`, 'g')) || []
@@ -79,7 +91,7 @@ test('every shared helper its call sites reference is defined', () => {
   }
 })
 
-test('apply registers the DSH surfaces the 0.1.7 contracts require', () => {
+test('apply registers the DSH surfaces the 0.2.2 contracts require', () => {
   const { exports } = loadClient()
 
   const slotRegistrations = []
@@ -114,9 +126,9 @@ test('apply registers the DSH surfaces the 0.1.7 contracts require', () => {
   assert.equal(definition.kind, 'archive')
   assert.equal(typeof definition.title, 'function')
 
-  // dsh 0.1.7 gives every guide entry a stable identity: it keys the entry's
-  // slot cell and rejects duplicates within one provider, so an entry without
-  // an id is a wiring mistake there.
+  // The guide entry needs the stable identity the registry keys it by (and
+  // rejects duplicates within one provider over), and thunked copy so a live
+  // language switch needs no re-registration.
   assert.equal(definition.guide.length, 1)
   assert.equal(typeof definition.guide[0].id, 'string')
   assert.ok(definition.guide[0].id.length > 0, 'the guide entry carries a stable id')
@@ -134,13 +146,56 @@ test('apply registers the DSH surfaces the 0.1.7 contracts require', () => {
   assert.equal(byName.get('sidebar.right.pane.tab.title').key, definition.id)
 })
 
-test('every product glyph the client draws is a 0.1.7 export name', () => {
+test('a late right-sidebar face still yields the type, and the settings section registers either way', async () => {
+  const { exports } = loadClient()
+
+  const slotRegistrations = []
+  const tabs = []
+  const locale = {
+    register() { return () => {} },
+    getSnapshot() { return { active: 'en' } },
+  }
+  const slots = {
+    inject(_name, register) { register() },
+    register(options) {
+      slotRegistrations.push(options)
+      return () => {}
+    },
+  }
+  // First read of the registry misses (the provider runs later), every read
+  // after it finds the face — the activation-order race dsh 0.2.2 does not
+  // sequence for a dsh.client.inject row.
+  let calls = 0
+  const ctx = {
+    get(name) {
+      if (name === 'locale') return locale
+      if (name === 'slots') return slots
+      return undefined
+    },
+    effect(callback) { return callback() },
+    get sidebarRightTabs() {
+      calls += 1
+      return calls === 1 ? undefined : { register(definition) { tabs.push(definition); return () => {} } }
+    },
+    sidebarRight: { openTab() {} },
+    uiWorkspace: { openSession() {}, startSession() {} },
+  }
+
+  exports.apply(ctx)
+
+  assert.equal(tabs.length, 1, 'the type registers on the retry, not never')
+  assert.equal(tabs[0].kind, 'archive')
+  const names = slotRegistrations.map((options) => options.name).sort()
+  assert.deepEqual(names, ['settings.section', 'shell.overlay', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title'])
+})
+
+test('every product glyph the client draws is a 0.2.2 export name', () => {
   const used = new Set([...source.matchAll(/['"](Icon[A-Za-z0-9]+)['"]/g)].map((match) => match[1]))
   assert.ok(used.size > 0, 'expected the client to draw at least one glyph')
   for (const name of used) {
     assert.ok(
       VERIFIED_GLYPHS.has(name),
-      `'${name}' is not one of the size-neutral dsh 0.1.7 primitives exports; ` +
+      `'${name}' is not one of the size-neutral 0.2.2 primitives exports; ` +
         'the artboard-size spellings of 0.1.5/0.1.6 resolve to nothing at runtime',
     )
   }
