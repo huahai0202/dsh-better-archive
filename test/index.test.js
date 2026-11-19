@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -568,4 +569,32 @@ test('bulk deletion skips unreadable entries and reports them', async (t) => {
   assert.match(response.body.unresolved[0].error, /does not have a JSONL artifact/)
   assert.equal(await exists(app.directories.get('session-1')), false)
   assert.equal(await exists(app.directories.get('session-2')), true)
+})
+
+test('the host half reads no service off ctx that it did not inject', () => {
+  // Cordis throws `cannot get property "x" without inject` for an undeclared
+  // service read, so `ctx.baseDir` (an hmr field, not a context field) took the
+  // whole `/archived/entries` route down. A service declared in `inject` may be
+  // read as a property; anything else must come from `ctx.get(name)`, which
+  // answers undefined instead of throwing.
+  const source = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
+  const CORE = new Set(['get', 'effect', 'on', 'emit', 'waterfall', 'parallel', 'inject', 'logger', 'reflect', 'fiber', 'scope'])
+  const declared = new Set(
+    (source.match(/const inject = \[([^\]]*)\]/)?.[1] ?? '')
+      .split(',')
+      .map((entry) => entry.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean),
+  )
+  const offenders = []
+  for (const match of source.matchAll(/\bctx\.([A-Za-z_$][\w$]*)/g)) {
+    const name = match[1]
+    // Skip prose: a match inside a comment line is documentation, not a read.
+    const lineStart = source.lastIndexOf('\n', match.index) + 1
+    const line = source.slice(lineStart, source.indexOf('\n', match.index))
+    if (/^\s*(\*|\/\/|\/\*)/.test(line)) continue
+    if (CORE.has(name) || declared.has(name)) continue
+    offenders.push(name)
+  }
+  assert.deepEqual([...new Set(offenders)], [], 'use ctx.get(name) for undeclared services')
+  assert.ok(declared.size > 0, 'the inject list was found')
 })

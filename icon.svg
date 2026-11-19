@@ -2,24 +2,28 @@
   <!-- Same tile recipe as the neighbouring plugins (dsh-rewind-plugin,
        dsh-web-fetch-hub, and the product's own Subagent artwork): a rounded
        square inset from the 36-unit canvas, carrying the product's vertical
-       light-to-dark blue gradient (#69B9FF -> #324DE2). The tile is what makes
-       this icon sit beside the installed ones at row size, so it stays.
+       light-to-dark blue gradient (#69B9FF -> #324DE2).
 
-       The mark is a storage drawer rather than a box with an arrow. The drawer
-       reads as "kept, not gone" at 20 px where the old box-plus-arrow collapsed
-       into a blob: one heavy horizontal lid, a shallow body, and a pull handle —
-       all on a 16-unit grid, scaled 1.4x like the neighbouring icons, with a
-       1.5-unit stroke whose ratio matches theirs. The handle is a solid bar so
-       the shape keeps an anchor point when the tile is only 20 px wide. -->
+       The mark is a storage drawer: one heavy lid, a shallow body, a pull
+       handle. It replaces a box-with-arrow that collapsed into a blob at 18-20px.
+
+       Geometry is symmetric about the 16-unit grid's centre, x = 8, with the
+       1.5-unit stroke accounted for by insetting each edge by 0.75:
+         lid    x 1.25..14.75  (13.5 wide, centred on 8)
+         body   x 2.25..13.75  (11.5 wide, r 2.2 corners, centred on 8)
+         handle x 6.15..9.85   (3.7 wide, centred on 8)
+       Vertically the group is placed so the ink, not the nominal box, is centred
+       on the tile: the drawing's ink runs y 2.65..12.75 at 1.4x scale, and the
+       translate puts that span's midpoint on 18. -->
   <g transform="translate(18 18) scale(0.9286) translate(-18 -18)">
     <rect x="4" y="4" width="28" height="28" rx="8" fill="url(#better_archive_blue)" />
-    <g transform="translate(7.6 7.4) scale(1.4)" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(6.8 8.13) scale(1.4)" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <!-- Lid: the heaviest line, so the silhouette survives downscaling. -->
-      <path d="M1.8 3.4h12.4" />
-      <!-- Drawer body. -->
-      <path d="M3.4 3.4v6.9a2.4 2.4 0 0 0 2.4 2.4h5.6a2.4 2.4 0 0 0 2.4-2.4V3.4" />
+      <path d="M1.25 2.65h13.5" />
+      <!-- Drawer body hanging from the lid. -->
+      <path d="M2.25 2.65v6.6a2.2 2.2 0 0 0 2.2 2.2h7.1a2.2 2.2 0 0 0 2.2-2.2V2.65" />
       <!-- Pull handle. -->
-      <path d="M6.2 8.4h4.2" />
+      <path d="M6.15 7.9h3.7" />
     </g>
   </g>
   <defs>

@@ -58,6 +58,8 @@ dsh plugin --profile web add github:huahai0202/dsh-better-archive
 
 安装完成后重启 `dsh web`。插件会自动加入该 profile 的 `dsh.profile.bundles`；若未自动加入，请在该数组中添加 `"dsh-better-archive"`，然后重启 DSH Web。
 
+> 0.11.1 修复 0.11.0 引入的崩溃。① **`ctx.baseDir` 不是 Context 的属性**：`baseDir` 只存在于 `hmr` 服务上，直接当属性读在 Cordis 下会抛 `cannot get property "baseDir" without inject`，`/archived/entries` 整条路由随之 500——界面因此显示「无法读取待删除状态」。现在按 `@deepseek-ai/dsh-home-paths` 的文档规则自行解析：优先 `$DSH_HOME`（去空白，空值视为未设），否则 `~/.dsh`；偏好文件落在 `<DSH_HOME>/plugin-data/dsh-better-archive/entries.json`。该包不能从 profile 插件里解析到，所以没有 import 它，只复刻那两条规则。② **图标左右不对称**：盖沿、箱体、把手原先各自偏移（中心分别是 8.6 / 8.0 / 8.3），现在统一对齐到 16 单位网格的中心 x=8，并按 1.5 描边内缩 0.75；竖直方向改为按**墨迹范围**而非名义包围盒居中，translate 由 6.8 / 8.13 解出，墨迹中心精确落在 (18,18)。新增一条测试守 `ctx` 属性读取：只有 Cordis 核心成员和 `inject` 里声明的服务才能当属性读，其余必须走 `ctx.get()`。
+
 > 0.11.0 两处产品改动。① **插件页新增「面板入口」设置卡片**：挂在 `plugins.bundle.config` 槽位（`key` 为包名），和 Jet Hub 那类卡片的形态一致——两个独立开关分别控制「右侧栏『已归档』页」与「设置页『已归档』一节」，可同时开启也可只留一个，两个都关会被 Host 拒绝（否则归档列表无处可达）。切换是**就地生效**的：偏好存在 `<profile>/plugin-data/dsh-better-archive/entries.json`，客户端据此注册 / 撤回对应的槽位，不需要刷新页面，也没有走 `configEditor`——那是改 profile patch 并重启插件的路径，对一个显隐开关太重了。偏好读取带序号守卫，启动时的 GET 不会覆盖用户刚做的选择。② **重画图标**：保留与相邻插件一致的 36×36 圆角蓝底与蓝渐变，把「盒子 + 箭头」换成抽屉造型（重盖沿、浅箱体、实心把手），因为旧符号缩到 18–20px 会糊成一团；新符号在 18px 下仍能看出抽屉轮廓，浅色与深色主题都验证过。
 
 > 0.10.3 取消归档改走官方 Remote。DSH 在客户端暴露了 `ctx.workspaces.unarchiveSession(sessionId)`（背后是 `remote.workspace.unarchiveSession`），它本身就是一条完整通道：调用 Host 的 `workspaceRegistry.unarchiveSession`、触发 `workspace/session-unarchiving` 钩子、并把返回的归档集合装进共享模型，会话树与本面板因此同步刷新。所以插件删掉了自己那两条 `/archived/unarchive` 与 `/archived/unarchive-selected` 路由，只保留 `/archived/clear-pending` —— 待删除标记是插件自己的记账，必须在 DSH 取消归档之后清掉，否则下次重启会把刚恢复的会话删掉。批量取消归档没有 Remote 形态，改为逐个串行调用同一条官方路径。剩下的私有依赖只有删除链路，因为 DSH 没有任何公开的「删除会话」API。
